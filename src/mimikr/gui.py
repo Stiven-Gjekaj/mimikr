@@ -58,7 +58,7 @@ from mimikr.config import Config, embedding_base_url, save_config
 from mimikr.engine import EngineError, RoomEngine
 from mimikr.export import file_name, room_as_text
 from mimikr.llm import ChatClient, LLMError
-from mimikr.rooms import USER, Room, RoomMessage
+from mimikr.rooms import USER, Room, RoomMessage, matches, search_rooms
 from mimikr.servers import check_servers
 
 BUBBLE_WIDTH = 520
@@ -727,6 +727,11 @@ class MainWindow(QMainWindow):
         new_room.clicked.connect(self.new_room)
         side.addWidget(new_room)
         side.addSpacing(12)
+        self.search = QLineEdit(placeholderText="Search rooms and messages")
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(lambda _text: self.reload_rooms())
+        side.addWidget(self.search)
+        side.addSpacing(6)
         rooms_label = QLabel("ROOMS", objectName="sectionLabel")
         rooms_label.setContentsMargins(6, 0, 0, 2)
         side.addWidget(rooms_label)
@@ -1063,10 +1068,13 @@ class MainWindow(QMainWindow):
         self.identity_errors.setVisible(bool(errors))
         self.rooms.blockSignals(True)
         self.rooms.clear()
-        for room in self.engine.store.list():
+        identities, _ = self.engine.identities()
+        names = {key: value.display_name for key, value in identities.items()}
+        query = self.search.text().strip()
+        for room, hits in search_rooms(self.engine.store.list(), query, names):
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, room.id)
-            card = self.room_card(room)
+            card = self.room_card(room, f"{hits} {'message' if hits == 1 else 'messages'}" if hits else None)
             item.setSizeHint(QSize(0, card.sizeHint().height()))
             self.rooms.addItem(item)
             self.rooms.setItemWidget(item, card)
@@ -1074,7 +1082,7 @@ class MainWindow(QMainWindow):
                 self.rooms.setCurrentItem(item)
         self.rooms.blockSignals(False)
 
-    def room_card(self, room: Room) -> QWidget:
+    def room_card(self, room: Room, note: str | None = None) -> QWidget:
         """Return the entry of a room in the list: a round picture, the name and the members."""
         card = QWidget()
         card.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -1087,7 +1095,7 @@ class MainWindow(QMainWindow):
         text = QVBoxLayout()
         text.setSpacing(1)
         title = QLabel(room.name, objectName="roomTitle")
-        members = QLabel(self.names(room.members), objectName="roomMembers")
+        members = QLabel(note or self.names(room.members), objectName="roomMembers")
         for label in (title, members):
             label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         text.addWidget(title)
@@ -1120,8 +1128,16 @@ class MainWindow(QMainWindow):
         picture = self.avatars.find("room", room.id) or (self.avatars.find("identity", first) if room.members else None)
         self.room_picture_holder.addWidget(avatar(room.id, room.name, 36, picture))
         self.view.clear()
+        query = self.search.text().strip()
+        first = None
         for message in room.messages:
             self.view.add(message)
+            if query and matches(message.text, query):
+                bubble = self.view.bubble(message.id)
+                bubble.setProperty("match", True)
+                first = first or bubble
+        if first is not None:
+            self.view.ensureWidgetVisible(first)
 
     def select_room(self, room_id: str) -> None:
         self.reload_rooms()

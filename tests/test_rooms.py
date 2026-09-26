@@ -1,6 +1,6 @@
 import pytest
 
-from mimikr.rooms import USER, Room, RoomMessage, RoomStore
+from mimikr.rooms import USER, Room, RoomMessage, RoomStore, search_rooms
 
 
 def test_the_store_saves_and_loads_a_room(tmp_path):
@@ -37,3 +37,27 @@ def test_the_members_speak_in_turn_and_the_user_does_not_change_the_turn():
     assert room.next_speaker() == "cy"
     room.messages.append(RoomMessage(author="cy", name="Cy", text="z"))
     assert room.next_speaker() == "ana"
+
+
+def search_fixture():
+    late = Room("Late night", ["june", "sam"])
+    late.messages = [RoomMessage(USER, "You", "noodles?"), RoomMessage("sam", "Sam", "NOODLES always")]
+    work = Room("Work", ["ana"])
+    work.messages = [RoomMessage(USER, "You", "the report is late")]
+    return [late, work], {"june": "June", "sam": "Sam", "ana": "Ana"}
+
+
+def test_search_counts_the_matching_messages_with_no_case():
+    rooms, names = search_fixture()
+    assert [(room.name, hits) for room, hits in search_rooms(rooms, "Noodles", names)] == [("Late night", 2)]
+
+
+def test_search_finds_a_room_by_its_name_or_a_member():
+    rooms, names = search_fixture()
+    assert [(room.name, hits) for room, hits in search_rooms(rooms, "late", names)] == [("Late night", 0), ("Work", 1)]
+    assert [room.name for room, _ in search_rooms(rooms, "ana", names)] == ["Work"]
+
+
+def test_an_empty_search_keeps_each_room():
+    rooms, names = search_fixture()
+    assert len(search_rooms(rooms, "  ", names)) == 2

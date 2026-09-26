@@ -538,3 +538,22 @@ def test_the_reply_settings_save_turn_taking_style_and_timing(application, tmp_p
     page.save_button.click()
     saved = load_config(tmp_path / "mimikr.toml", environ={})
     assert (saved.turn_taking, saved.enforce_style, saved.realistic_timing) == ("rotate", False, True)
+
+
+def test_search_filters_the_rooms_and_marks_the_matches(application, tmp_path):
+    window = make_window(tmp_path, FakeModel(reply="noodles always"))
+    lunch = window.engine.create_room("Lunch", ["ana"])
+    window.engine.create_room("Work", ["bo"])
+    window.select_room(lunch.id)
+    window.composer.setPlainText("hi")
+    window.send()
+    wait_until_idle(application, window)
+    window.search.setText("NOODLES")
+    assert window.rooms.count() == 1
+    card = window.rooms.itemWidget(window.rooms.item(0))
+    assert card.findChild(QLabel, "roomMembers").text() == "1 message"
+    window.open_room(lunch.id)
+    marked = [label.text() for label in window.view.findChildren(QLabel) if label.property("match")]
+    assert marked == ["noodles always"]
+    window.search.clear()
+    assert window.rooms.count() == 2

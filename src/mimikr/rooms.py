@@ -100,3 +100,25 @@ class RoomStore:
 
     def delete(self, room_id: str) -> None:
         self._path(room_id).unlink(missing_ok=True)
+
+
+def matches(text: str, query: str) -> bool:
+    return query.casefold() in text.casefold()
+
+
+def search_rooms(rooms: list[Room], query: str, names: dict[str, str]) -> list[tuple[Room, int]]:
+    """Return the rooms that match the query, each with its number of matching messages.
+
+    A room matches if its name, the name of a member, or a message holds the
+    query. Case does not matter. An empty query matches each room with 0 messages.
+    """
+    query = query.strip()
+    if not query:
+        return [(room, 0) for room in rooms]
+    found = []
+    for room in rooms:
+        hits = sum(matches(message.text, query) for message in room.messages)
+        about = [room.name, *(names.get(member, member) for member in room.members)]
+        if hits or any(matches(text, query) for text in about):
+            found.append((room, hits))
+    return found
