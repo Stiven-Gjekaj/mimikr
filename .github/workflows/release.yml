@@ -1,0 +1,94 @@
+# Builds the macOS application of a release, and publishes it only from a tag.
+#
+# A run started by hand builds the application and tests it, and it publishes
+# nothing. That is the way to test this file without a release.
+#
+# The job that publishes is the only job that holds a write token, and it runs
+# only for a tag. It opens a draft, so that a person reads the release before
+# anybody can download it.
+#
+# Every action is pinned to the commit of a release, for the reason that
+# ci.yml gives.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build the macOS application
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - id: version
+        run: echo "version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)" >> "$GITHUB_OUTPUT"
+
+      # The runner has no rsvg-convert, so the build uses the icon.icns of the
+      # repository.
+      - run: scripts/build-macos-app.sh
+
+      # The application must start from the zip, and read identities, before
+      # anybody downloads it. check exits with 1 when it finds no identity.
+      - name: test the built application
+        run: |
+          home="$RUNNER_TEMP/home"
+          mkdir -p "$home"
+          cp -R examples/identities "$home/"
+          ditto -x -k dist/mimikr-*.zip "$RUNNER_TEMP/unzipped"
+          MIMIKR_HOME="$home" "$RUNNER_TEMP/unzipped/mimikr.app/Contents/MacOS/mimikr" check
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/mimikr-*.zip
+          if-no-files-found: error
+
+  release:
+    name: publish a draft release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+
+      # A tag that disagrees with the version in pyproject.toml gives a zip
+      # whose name names a release that it does not belong to.
+      - name: check that the tag names the version
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "The tag is ${GITHUB_REF_NAME} and pyproject.toml says ${VERSION}." >&2
+            exit 1
+          fi
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/mimikr-*.zip
+
+      - name: open the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft \
+            --title "mimikr ${GITHUB_REF_NAME}" \
+            --generate-notes
