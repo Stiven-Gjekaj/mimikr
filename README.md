@@ -128,6 +128,15 @@ xattr -d com.apple.quarantine /Applications/mimikr.app
 The application keeps its settings, identities and rooms in
 `~/Documents/mimikr`. `scripts/build-macos-app.sh` builds it from the source.
 
+### Windows and Linux
+
+From version 1.1, each release also has `mimikr-<version>-windows-x64.zip` and
+`mimikr-<version>-linux-x64.tar.gz`. Unpack the file, and start `mimikr.exe` or
+`mimikr` in the folder `mimikr`. The application keeps its data in the folder
+`Documents/mimikr` of your home. `scripts/build-app.py` builds it from the
+source. On Linux, Qt needs the libraries for OpenGL, fonts and the keyboard
+that most desktops have.
+
 ### From the source
 
 You need Python 3.11 or later, [uv](https://docs.astral.sh/uv/), and a local
@@ -185,6 +194,10 @@ Click **Identities** in the sidebar, and **+ New identity**. Write the
 personality, and drop a chat export on the page, or click **Import a chat...**.
 mimikr asks which name in the chat is the person, and writes `chat.md`. It asks
 before it writes over a `chat.md` that exists.
+
+The **Group lore** card on the same page holds what the whole group knows: who
+is who, running jokes, what happened. It stays in `identities/lore.md`, and each
+identity reads it.
 
 The editor writes the files below. You can also write them by hand. Make one
 directory for each identity in `identities/`:
@@ -311,6 +324,11 @@ The count of messages for each name tells you which name to put in `speaker`.
   for that number of messages.
 - Click **Stop** to end the work. A reply that the model has not finished goes
   away, and nothing of it is saved.
+- Right-click a message to **Reply** to it. The reply shows a quote of the
+  message, the model sees the quote, and the author of that message answers
+  first.
+- **Topic...** in the header says what happens in the room now, for example
+  "the new chapter of Soultale is out". Each identity knows it.
 - Right-click a message to **Copy**, **Edit...** or **Delete** it. On the last
   reply, **Write again** asks the model for a new one. **Like this reply** keeps
   a good reply as an example for the later replies of that identity.
@@ -417,6 +435,9 @@ ollama pull nomic-embed-text
 | `--no-meaning` | Skip the meaning score |
 | `--show` | Show each real reply next to the reply of the model |
 
+The report also gives **repeats**: the share of the replies that repeat an
+earlier reply, for the real person and for the model.
+
 Each report goes to `data/evals/` as JSON. `mimikr scores` puts all of them in
 one table, the best meaning score first:
 
@@ -494,7 +515,9 @@ the working directory otherwise. A relative folder is relative to the file.
 | `identities_dir` | `MIMIKR_IDENTITIES_DIR` | `identities` |
 | `data_dir` | `MIMIKR_DATA_DIR` | `data` |
 | `history_budget` | `MIMIKR_HISTORY_BUDGET` | `12000` characters of the room that go to the model |
-| `enforce_style` | `MIMIKR_ENFORCE_STYLE` | `true` |
+| `enforce_style` | `MIMIKR_ENFORCE_STYLE` | `true`. It also keeps the number of emoji in a message to the habit of the person. |
+| `avoid_repeats` | `MIMIKR_AVOID_REPEATS` | `true`. It drops a message that the identity sent in its last six messages. |
+| `frequency_penalty`, `presence_penalty` | `MIMIKR_FREQUENCY_PENALTY`, `MIMIKR_PRESENCE_PENALTY` | `0`, `0` |
 | `turn_taking` | `MIMIKR_TURN_TAKING` | `smart`. Or `rotate`, the order of the room. |
 | `realistic_timing` | `MIMIKR_REALISTIC_TIMING` | `true` |
 | `llama_server` | `MIMIKR_LLAMA_SERVER` | empty, which means the llama-server that the system finds |
