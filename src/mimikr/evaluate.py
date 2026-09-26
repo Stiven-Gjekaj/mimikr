@@ -15,11 +15,11 @@ from typing import Protocol
 from mimikr.examples import ExampleIndex, recent_query
 from mimikr.identity import Identity
 from mimikr import prompt
-from mimikr.prompt import build_messages, split_reply
 from mimikr.rooms import Room, RoomMessage
 from mimikr.style import StyleProfile, build_profile
 from mimikr.transcript import Message, turn_starts
 from mimikr.vectors import cosine
+from mimikr.writer import MODES, Completer, write_reply
 
 # The maximum number of messages before a test turn that the model sees.
 CONTEXT_SIZE = 20
@@ -143,10 +143,6 @@ def score_meaning(real_turns: list[list[str]], generated_turns: list[list[str]],
     return MeaningScore(score=sum(similarities) / len(similarities), baseline=baseline)
 
 
-class Completer(Protocol):
-    def complete(self, messages: list[dict], model: str, temperature: float) -> str: ...
-
-
 @dataclass
 class CaseResult:
     # The last messages before the reply, as 'Name: text'.
@@ -160,6 +156,7 @@ class Report:
     identity: str
     model: str
     temperature: float
+    mode: str
     examples: str
     training_messages: int
     style: StyleScore
@@ -198,6 +195,7 @@ def run_evaluation(
     progress: Callable[[int, int], None] | None = None,
     examples: str = "recent",
     example_embed: Embedder | None = None,
+    mode: str = "chat",
 ) -> Report:
     """Let the model write each test reply, and score the replies.
 
@@ -210,6 +208,8 @@ def run_evaluation(
     if max_cases:
         cases = cases[-max_cases:]
     trained = training_identity(identity, training)
+    if mode not in MODES:
+        raise EvaluationError(f"the mode is {mode!r}. Use 'chat' or 'continue'")
     if examples not in ("recent", "similar"):
         raise EvaluationError(f"examples is {examples!r}. Use 'recent' or 'similar'")
     index = None
@@ -226,16 +226,13 @@ def run_evaluation(
         if index is not None:
             query = recent_query([(message.speaker == identity.speaker, message.text) for message in case.context])
             exchanges = index.select(query, example_embed, prompt.EXAMPLE_BUDGET)
-        reply = completer.complete(
-            build_messages(trained, room_for(trained, case.context), names={}, exchanges=exchanges),
-            model=model,
-            temperature=temperature,
-        )
+        generated = write_reply(trained, room_for(trained, case.context), {}, exchanges, completer,
+                                model=model, temperature=temperature, mode=mode)
         results.append(
             CaseResult(
                 context=[f"{message.speaker}: {message.text}" for message in case.context[-4:]],
                 real=[message.text for message in case.reply],
-                generated=split_reply(trained, reply),
+                generated=generated,
             )
         )
 
@@ -245,6 +242,7 @@ def run_evaluation(
         identity=identity.id,
         model=model,
         temperature=temperature,
+        mode=mode,
         examples=examples,
         training_messages=len(training),
         style=score_style(real_turns, generated_turns),

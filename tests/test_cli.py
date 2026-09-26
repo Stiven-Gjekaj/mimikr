@@ -15,6 +15,10 @@ class FakeClient:
         self.models.append(model)
         return "ok sure"
 
+    def continue_text(self, prompt, model, temperature, stop):
+        self.models.append(model)
+        return " ok sure"
+
     def embed(self, texts, model):
         self.embedding_models.append(model)
         return [[float(len(text)), 1.0] for text in texts]
@@ -44,7 +48,7 @@ def test_eval_prints_the_scores_and_saves_the_report(tmp_path, capsys):
     assert "Warning: a score from fewer than 10 test replies is not reliable." in out
     assert "style    " in out and "meaning  " in out
     assert "  real:  answer 9" in out and "  model: ok sure" in out
-    [saved] = (tmp_path / "data" / "evals").glob("sam-default-model-*.json")
+    [saved] = (tmp_path / "data" / "evals").glob("sam-default-model-chat-recent-*.json")
     report = json.loads(saved.read_text(encoding="utf-8"))
     assert [result["real"] for result in report["results"]] == [["answer 8"], ["answer 9"]]
     assert client.embedding_models == ["embedder"]
@@ -100,3 +104,9 @@ def test_the_examples_option_has_priority_over_the_setting(tmp_path, capsys):
     assert client.embedding_models
     evaluate(config, "sam", None, None, False, False, client=FakeClient())
     assert "recent examples" in capsys.readouterr().out
+
+
+def test_the_mode_option_is_in_the_report_and_the_file_name(tmp_path, capsys):
+    evaluate(make_config(tmp_path), "sam", None, None, False, False, client=FakeClient(), mode="continue")
+    assert "continue mode" in capsys.readouterr().out
+    assert list((tmp_path / "data" / "evals").glob("sam-default-model-continue-recent-*.json"))

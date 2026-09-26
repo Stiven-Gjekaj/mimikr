@@ -43,6 +43,23 @@ class Stranger:
     def complete(self, messages, model, temperature):
         return "Good evening. I am afraid that I cannot answer that question today, but I will try tomorrow."
 
+    def continue_text(self, prompt, model, temperature, stop):
+        return " " + self.complete([], model, temperature)
+
+
+class LogOracle:
+    """Continue the chat log with the real reply of the case."""
+
+    def __init__(self, identity: Identity):
+        self.transcript = identity.transcript
+        self.prompts: list[str] = []
+
+    def continue_text(self, prompt, model, temperature, stop):
+        self.prompts.append(prompt)
+        last = prompt.splitlines()[-2].removeprefix("June: ")
+        index = next(i for i, m in enumerate(self.transcript) if m.text == last)
+        return f" {self.transcript[index + 1].text}\nSam: {self.transcript[index + 2].text}\nJune: next"
+
 
 def test_the_real_replies_get_the_best_score():
     identity = sam()
@@ -123,3 +140,19 @@ def test_similar_examples_match_the_question_of_the_case(monkeypatch):
 def test_similar_examples_need_an_embedder():
     with pytest.raises(EvaluationError, match="need an embedding model"):
         run_evaluation(sam(), Stranger(), model="m", temperature=0.5, examples="similar")
+
+
+def test_the_continue_mode_gives_the_real_replies_the_best_score():
+    identity = sam()
+    oracle = LogOracle(identity)
+    report = run_evaluation(identity, oracle, model="base", temperature=0.9, mode="continue", embed=WordEmbedder())
+    assert report.mode == "continue"
+    assert report.style.score == pytest.approx(1.0)
+    assert report.meaning.score == pytest.approx(1.0)
+    for prompt, result in zip(oracle.prompts, report.results):
+        assert not any(real in prompt for real in result.real)
+
+
+def test_an_unknown_mode_cannot_be_scored():
+    with pytest.raises(EvaluationError, match="'chat' or 'continue'"):
+        run_evaluation(sam(), Stranger(), model="m", temperature=0.5, mode="poetry")

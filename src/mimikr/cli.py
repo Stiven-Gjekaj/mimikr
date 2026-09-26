@@ -42,7 +42,7 @@ FEW_CASES = 10
 
 
 def print_report(report: Report, show: bool) -> None:
-    print(f"{report.identity}, model {report.model}, temperature {report.temperature}, {report.examples} examples")
+    print(f"{report.identity}, model {report.model}, temperature {report.temperature}, {report.mode} mode, {report.examples} examples")
     count = len(report.results)
     print(f"{count} test {'reply' if count == 1 else 'replies'}, {report.training_messages} training messages")
     if count < FEW_CASES:
@@ -68,7 +68,8 @@ def print_report(report: Report, show: bool) -> None:
 
 
 def evaluate(config: Config, name: str, cases: int | None, model: str | None, meaning: bool,
-             show: bool, client=None, embed_client=None, examples: str | None = None) -> int:
+             show: bool, client=None, embed_client=None, examples: str | None = None,
+             mode: str | None = None) -> int:
     identities, errors = list_identities(config.identities_dir)
     if name not in identities:
         print(f"mimikr: {errors.get(name) or f'no identity is named {name!r}'}", file=sys.stderr)
@@ -94,7 +95,7 @@ def evaluate(config: Config, name: str, cases: int | None, model: str | None, me
     try:
         report = run_evaluation(identity, client, model, temperature, embed=embed if meaning else None,
                                 max_cases=cases, progress=progress, examples=examples or config.examples,
-                                example_embed=embed)
+                                example_embed=embed, mode=mode or identity.mode or config.mode)
     except (EvaluationError, LLMError) as error:
         print(f"{chr(10) if started else ''}mimikr: {error}", file=sys.stderr)
         return 1
@@ -104,7 +105,8 @@ def evaluate(config: Config, name: str, cases: int | None, model: str | None, me
     directory = config.data_dir / "evals"
     directory.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    path = directory / f"{identity.id}-{re.sub(r'[^A-Za-z0-9._-]', '_', model)}-{stamp}.json"
+    label = re.sub(r"[^A-Za-z0-9._-]", "_", f"{model}-{report.mode}-{report.examples}")
+    path = directory / f"{identity.id}-{label}-{stamp}.json"
     path.write_text(json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\nSaved to {path}")
     return 0
@@ -119,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
     eval_parser.add_argument("identity")
     eval_parser.add_argument("--cases", type=int, help="score only the last N test replies")
     eval_parser.add_argument("--model", help="use this model and not the one in the settings")
+    eval_parser.add_argument("--mode", choices=("chat", "continue"),
+                             help="how the model writes, in place of the setting")
     eval_parser.add_argument("--examples", choices=("recent", "similar"),
                              help="how the prompt chooses examples, in place of the setting")
     eval_parser.add_argument("--no-meaning", action="store_true", help="do not use the embedding model")
@@ -130,7 +134,8 @@ def main(argv: list[str] | None = None) -> int:
         return check(config)
     if arguments.command == "eval":
         return evaluate(config, arguments.identity, arguments.cases, arguments.model,
-                        meaning=not arguments.no_meaning, show=arguments.show, examples=arguments.examples)
+                        meaning=not arguments.no_meaning, show=arguments.show, examples=arguments.examples,
+                        mode=arguments.mode)
     from mimikr.gui import run
 
     return run(config)
