@@ -1,0 +1,44 @@
+"""Load the settings of mimikr.
+
+The order of priority, from high to low:
+
+1. Environment variables, for example `MIMIKR_MODEL`.
+2. The file `mimikr.toml` in the working directory.
+3. The defaults in this file.
+"""
+
+import os
+import tomllib
+from dataclasses import dataclass, fields
+from pathlib import Path
+
+
+@dataclass
+class Config:
+    # The defaults point to Ollama. LM Studio uses http://localhost:1234/v1.
+    base_url: str = "http://localhost:11434/v1"
+    api_key: str = "local"
+    model: str = "llama3.1"
+    temperature: float = 0.8
+    identities_dir: Path = Path("identities")
+    data_dir: Path = Path("data")
+
+
+def load_config(path: Path = Path("mimikr.toml"), environ: dict[str, str] | None = None) -> Config:
+    environ = os.environ if environ is None else environ
+    values: dict[str, object] = {}
+    if path.is_file():
+        values.update(tomllib.loads(path.read_text(encoding="utf-8")))
+    for item in fields(Config):
+        key = f"MIMIKR_{item.name.upper()}"
+        if key in environ:
+            values[item.name] = environ[key]
+
+    config = Config()
+    for item in fields(Config):
+        if item.name not in values:
+            continue
+        default = getattr(config, item.name)
+        value = values[item.name]
+        setattr(config, item.name, type(default)(value) if not isinstance(default, Path) else Path(value))
+    return config
