@@ -1,0 +1,52 @@
+# Runs the tests on macOS, Linux and Windows, for each push to main and each
+# pull request.
+#
+# Every action is pinned to the commit of a release, and not to a tag. A tag
+# moves, and a moved tag runs code that nobody read.
+#
+# The window tests use the Qt offscreen platform, so they need no screen.
+# Linux still needs the libraries that Qt loads for fonts, keys and OpenGL.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test on ${{ matrix.os }}
+    strategy:
+      # One host that fails must not hide the state of the other two.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: install the libraries of Qt
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libglib2.0-0
+
+      - run: uv sync --locked
+      - run: uv run pytest -q
+      - name: check the example identities
+        run: uv run mimikr check
+        env:
+          MIMIKR_IDENTITIES_DIR: examples/identities
