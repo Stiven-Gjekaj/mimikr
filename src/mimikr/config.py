@@ -43,6 +43,15 @@ class Config:
     # The server of the embedding model. Empty means the server in base_url.
     # llama.cpp serves one model on each server, so it needs a second address.
     embedding_url: str = ""
+    # llama.cpp servers that the window can start. An empty llama_server means
+    # the llama-server that the system finds.
+    llama_server: str = ""
+    chat_gguf: str = ""
+    embedding_gguf: str = ""
+    chat_port: int = 8080
+    embedding_port: int = 8081
+    context_size: int = 8192
+    start_servers: bool = False
     # The look of the window. theme is "system", "light" or "dark". accent is a
     # name from theme.ACCENTS or a "#rrggbb" color.
     theme: str = "system"

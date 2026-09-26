@@ -62,6 +62,7 @@ from mimikr.importers import ExportError, read_export
 from mimikr.transcript import TranscriptError, parse_transcript
 from mimikr.export import file_name, room_as_text
 from mimikr.llm import ChatClient, LLMError
+from mimikr.local_servers import LocalServer, ServerError, find_llama_server
 from mimikr.rooms import USER, Room, RoomMessage, matches, search_rooms
 from mimikr.servers import check_servers
 
@@ -177,6 +178,8 @@ class Bridge(QObject):
     failed = Signal(str, str)
     notice = Signal(str, str)
     idle = Signal(str)
+    # The result of a start of the local servers: an error, or an empty text.
+    servers = Signal(str)
 
 
 class Composer(QPlainTextEdit):
@@ -479,6 +482,40 @@ class SettingsPage(QScrollArea):
         form.addRow(self.label(""), check_row)
         column.addWidget(server)
 
+        local = self.card("Local llama.cpp", "mimikr can start llama-server for you: one server for the chat model "
+                                             "and one for the embedding model.")
+        form = self.form(local)
+        self.llama_server = QLineEdit(placeholderText=find_llama_server() or "The path of llama-server")
+        self.chat_gguf = QLineEdit(placeholderText="A .gguf file")
+        self.embedding_gguf = QLineEdit(placeholderText="A .gguf file")
+        self.chat_port = QSpinBox(minimum=1024, maximum=65535)
+        self.embedding_port = QSpinBox(minimum=1024, maximum=65535)
+        self.context_size = QSpinBox(minimum=1024, maximum=131072, singleStep=1024)
+        self.start_servers = QCheckBox("Start the servers when mimikr opens")
+        form.addRow(self.label("llama-server"), self.llama_server)
+        form.addRow(self.label("Chat model file"), self.file_row(self.chat_gguf))
+        form.addRow(self.label("Embedding file"), self.file_row(self.embedding_gguf))
+        ports = QHBoxLayout()
+        ports.addWidget(self.chat_port)
+        ports.addWidget(QLabel("chat", objectName="hint"))
+        ports.addSpacing(12)
+        ports.addWidget(self.embedding_port)
+        ports.addWidget(QLabel("embeddings", objectName="hint"))
+        ports.addStretch(1)
+        form.addRow(self.label("Ports"), ports)
+        form.addRow(self.label("Context"), self.context_size)
+        form.addRow(self.label(""), self.start_servers)
+        self.start_button = QPushButton("Start")
+        self.stop_button = QPushButton("Stop")
+        self.server_status = QLabel(objectName="hint", wordWrap=True)
+        self.server_status.setTextFormat(Qt.TextFormat.PlainText)
+        controls = QHBoxLayout()
+        controls.addWidget(self.start_button, alignment=Qt.AlignmentFlag.AlignTop)
+        controls.addWidget(self.stop_button, alignment=Qt.AlignmentFlag.AlignTop)
+        controls.addWidget(self.server_status, 1)
+        form.addRow(self.label(""), controls)
+        column.addWidget(local)
+
         # Replies.
         self.mode = QComboBox()
         self.mode.addItem("Chat: an instruct model answers", "chat")
@@ -541,6 +578,27 @@ class SettingsPage(QScrollArea):
         layout.addSpacing(10)
         return card
 
+    # Ask the user for a model file. A test puts a function here that gives a path.
+    pick_model: Callable[[], Path | None] | None = None
+
+    def file_row(self, field: QLineEdit) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.addWidget(field, 1)
+        browse = QPushButton("Browse...")
+        browse.clicked.connect(lambda: self.browse_model(field))
+        row.addWidget(browse)
+        return row
+
+    def browse_model(self, field: QLineEdit) -> None:
+        if self.pick_model is not None:
+            path = self.pick_model()
+        else:
+            chosen, _ = QFileDialog.getOpenFileName(self, "Choose a model", str(Path.home() / "Models"),
+                                                    "GGUF models (*.gguf)")
+            path = Path(chosen) if chosen else None
+        if path is not None:
+            field.setText(str(path))
+
     @staticmethod
     def label(text: str) -> QLabel:
         """Return a label of one width, so that the fields of all cards start at one line."""
@@ -577,6 +635,13 @@ class SettingsPage(QScrollArea):
         self.mode.setCurrentIndex(max(0, self.mode.findData(config.mode)))
         self.examples.setCurrentIndex(max(0, self.examples.findData(config.examples)))
         self.temperature.setValue(config.temperature)
+        self.llama_server.setText(config.llama_server)
+        self.chat_gguf.setText(config.chat_gguf)
+        self.embedding_gguf.setText(config.embedding_gguf)
+        self.chat_port.setValue(config.chat_port)
+        self.embedding_port.setValue(config.embedding_port)
+        self.context_size.setValue(config.context_size)
+        self.start_servers.setChecked(config.start_servers)
         self.turn_taking.setCurrentIndex(max(0, self.turn_taking.findData(config.turn_taking)))
         self.enforce_style.setChecked(config.enforce_style)
         self.realistic_timing.setChecked(config.realistic_timing)
@@ -625,6 +690,15 @@ class SettingsPage(QScrollArea):
         config.embedding_url = self.embedding_url.text().strip()
         config.embedding_model = self.embedding_model.text().strip() or Config.embedding_model
 
+    def apply_local(self, config: Config) -> None:
+        config.llama_server = self.llama_server.text().strip()
+        config.chat_gguf = self.chat_gguf.text().strip()
+        config.embedding_gguf = self.embedding_gguf.text().strip()
+        config.chat_port = self.chat_port.value()
+        config.embedding_port = self.embedding_port.value()
+        config.context_size = self.context_size.value()
+        config.start_servers = self.start_servers.isChecked()
+
     def check(self) -> None:
         """Check the servers in the fields, before a save, in a worker thread."""
         trial = replace(self.config)
@@ -641,6 +715,7 @@ class SettingsPage(QScrollArea):
         config = self.config
         self.apply_look(config)
         self.apply_server(config)
+        self.apply_local(config)
         config.mode = self.mode.currentData()
         config.examples = self.examples.currentData()
         config.temperature = round(self.temperature.value(), 2)
@@ -685,6 +760,7 @@ class MainWindow(QMainWindow):
     def __init__(self, engine: RoomEngine, config_path: Path = Path("mimikr.toml"),
                  reconnect: Callable[[Config], None] | None = None):
         super().__init__()
+        self.local_servers: list[LocalServer] = []
         self.engine = engine
         self.avatars = AvatarStore(engine.config.data_dir, engine.config.identities_dir)
         self.config_path = config_path
@@ -714,6 +790,7 @@ class MainWindow(QMainWindow):
         self.bridge.notice.connect(self.on_notice)
         self.stop_event = threading.Event()
         self.bridge.idle.connect(self.on_idle)
+        self.bridge.servers.connect(self.on_servers)
 
         self.setWindowTitle("mimikr")
         self.resize(1080, 720)
@@ -884,6 +961,9 @@ class MainWindow(QMainWindow):
 
     def build_settings_page(self) -> QWidget:
         self.settings = SettingsPage(self.engine.config)
+        self.settings.start_button.clicked.connect(self.start_local_servers)
+        self.settings.stop_button.clicked.connect(self.stop_local_servers)
+        self.settings.stop_button.setEnabled(False)
         self.settings.look_changed.connect(self.apply_theme)
         self.settings.saved.connect(self.save_settings)
         return self.settings
@@ -1274,6 +1354,76 @@ class MainWindow(QMainWindow):
         QGuiApplication.clipboard().setText(self.room_text())
         self.set_status("Copied the room as text.")
 
+    # Local servers
+
+    def start_local_servers(self) -> None:
+        """Start the llama.cpp servers of the settings page, in a worker thread, and use them."""
+        if self.local_servers:
+            return
+        trial = replace(self.engine.config)
+        self.settings.apply_local(trial)
+        executable = trial.llama_server or find_llama_server()
+        log_dir = self.engine.config.data_dir / "logs"
+        planned = []
+        if trial.chat_gguf:
+            planned.append(LocalServer("chat", executable, trial.chat_gguf, trial.chat_port,
+                                       self.engine.config.model, log_dir, trial.context_size))
+        if trial.embedding_gguf:
+            planned.append(LocalServer("embedding", executable, trial.embedding_gguf, trial.embedding_port,
+                                       self.engine.config.embedding_model, log_dir, trial.context_size,
+                                       embeddings=True))
+        if not planned:
+            self.settings.server_status.setText("Choose a chat model file, an embedding model file, or both.")
+            return
+        self.local_servers = planned
+        self.settings.start_button.setEnabled(False)
+        self.settings.stop_button.setEnabled(True)
+        self.settings.server_status.setText("Starting. A large model takes some seconds to load...")
+
+        def work() -> None:
+            try:
+                for server in planned:
+                    server.start()
+                for server in planned:
+                    server.wait_until_ready()
+                self.bridge.servers.emit("")
+            except ServerError as error:
+                self.bridge.servers.emit(str(error))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def on_servers(self, error: str) -> None:
+        if error:
+            self.stop_local_servers()
+            self.settings.server_status.setText(f"Fault: {error}.")
+            return
+        config = self.engine.config
+        lines = []
+        for server in self.local_servers:
+            if server.name == "chat":
+                config.base_url = server.url
+                self.settings.base_url.setText(server.url)
+            else:
+                config.embedding_url = server.url
+                self.settings.embedding_url.setText(server.url)
+            lines.append(f"The {server.name} server runs at {server.url}.")
+        if self.reconnect:
+            self.reconnect(config)
+        self.settings.server_status.setText(" ".join(lines) + " mimikr uses it now.")
+
+    def stop_local_servers(self) -> None:
+        for server in self.local_servers:
+            server.stop()
+        self.local_servers = []
+        self.settings.start_button.setEnabled(True)
+        self.settings.stop_button.setEnabled(False)
+        self.settings.server_status.setText("Stopped.")
+
+    def closeEvent(self, event) -> None:
+        for server in self.local_servers:
+            server.stop()
+        super().closeEvent(event)
+
     # Pictures
 
     def ask_for_image(self) -> Path | None:
@@ -1606,4 +1756,6 @@ def run(config: Config) -> int:
 
     window = MainWindow(engine, reconnect=reconnect)
     window.show()
+    if config.start_servers and (config.chat_gguf or config.embedding_gguf):
+        window.start_local_servers()
     return application.exec()

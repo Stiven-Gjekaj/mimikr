@@ -658,3 +658,52 @@ def test_the_header_and_the_card_of_a_room_show_the_same_initials(application, t
     [header] = avatars_in(window.room_picture)
     [card] = avatars_in(window.rooms.itemWidget(window.rooms.item(0)))
     assert header.text() == card.text() == "B"
+
+
+def test_start_and_stop_local_servers_from_the_settings(application, tmp_path):
+    from test_local_servers import fake_executable, free_port, model_file
+
+    reconnected = []
+    window = make_window(tmp_path, FakeModel(), reconnect=reconnected.append)
+    page = window.settings
+    page.llama_server.setText(fake_executable(tmp_path))
+    page.chat_gguf.setText(model_file(tmp_path))
+    port = free_port()
+    page.chat_port.setValue(port)
+    window.start_local_servers()
+    deadline = time.monotonic() + 20
+    while "runs at" not in page.server_status.text() and "Fault" not in page.server_status.text():
+        assert time.monotonic() < deadline
+        application.processEvents()
+        time.sleep(0.05)
+    try:
+        assert window.engine.config.base_url == f"http://127.0.0.1:{port}/v1"
+        assert page.base_url.text() == f"http://127.0.0.1:{port}/v1"
+        assert reconnected and window.local_servers[0].running()
+    finally:
+        window.stop_local_servers()
+    assert window.local_servers == [] and page.server_status.text() == "Stopped."
+
+
+def test_a_server_that_fails_shows_its_fault(application, tmp_path):
+    from test_local_servers import fake_executable, free_port, model_file
+
+    window = make_window(tmp_path, FakeModel())
+    page = window.settings
+    page.llama_server.setText(fake_executable(tmp_path, "--fail"))
+    page.chat_gguf.setText(model_file(tmp_path))
+    page.chat_port.setValue(free_port())
+    window.start_local_servers()
+    deadline = time.monotonic() + 20
+    while "Fault" not in page.server_status.text():
+        assert time.monotonic() < deadline
+        application.processEvents()
+        time.sleep(0.05)
+    assert "the model file is broken" in page.server_status.text()
+    assert page.start_button.isEnabled()
+
+
+def test_start_with_no_model_file_says_what_to_do(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    window.start_local_servers()
+    assert "Choose a chat model file" in window.settings.server_status.text()
