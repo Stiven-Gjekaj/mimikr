@@ -20,6 +20,8 @@ class Config:
     api_key: str = "local"
     model: str = "llama3.1"
     temperature: float = 0.8
+    # The model that `mimikr eval` uses to compare the meaning of two replies.
+    embedding_model: str = "nomic-embed-text"
     identities_dir: Path = Path("identities")
     data_dir: Path = Path("data")
 

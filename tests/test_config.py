@@ -14,3 +14,9 @@ def test_the_file_sets_values_and_the_environment_overrides_them(tmp_path):
     assert config.model == "from-env"
     assert config.temperature == 0.2
     assert config.identities_dir == Path("people")
+
+
+def test_the_file_sets_the_embedding_model(tmp_path):
+    path = tmp_path / "mimikr.toml"
+    path.write_text('embedding_model = "mxbai-embed-large"\n', encoding="utf-8")
+    assert load_config(path, environ={}).embedding_model == "mxbai-embed-large"
