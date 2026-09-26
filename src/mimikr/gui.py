@@ -1407,7 +1407,8 @@ class MainWindow(QMainWindow):
             detach(self.room_picture_holder.takeAt(0).widget())
         first = room.members[0] if room.members else room.id
         picture = self.avatars.find("room", room.id) or (self.avatars.find("identity", first) if room.members else None)
-        self.room_picture_holder.addWidget(avatar(room.id, room.name, 36, picture))
+        # The same picture as the card of the room in the list.
+        self.room_picture_holder.addWidget(avatar(first, self.names([first]) or room.name, 36, picture))
         self.view.clear()
         query = self.search.text().strip()
         first = None

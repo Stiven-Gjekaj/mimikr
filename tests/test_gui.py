@@ -649,3 +649,12 @@ def test_a_file_that_is_no_chat_is_refused(application, tmp_path):
     window.import_chat("ana", source)
     assert "does not know this file" in window.identity_note.text()
     assert not (tmp_path / "identities" / "ana" / "chat.md").exists()
+
+
+def test_the_header_and_the_card_of_a_room_show_the_same_initials(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    room = window.engine.create_room("Late night", ["bo", "ana"])
+    window.select_room(room.id)
+    [header] = avatars_in(window.room_picture)
+    [card] = avatars_in(window.rooms.itemWidget(window.rooms.item(0)))
+    assert header.text() == card.text() == "B"
