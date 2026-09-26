@@ -24,6 +24,9 @@ class Config:
     # The maximum number of characters of the room that go to the model. Older
     # messages stay in the room, but the model does not see them.
     history_budget: int = 12000
+    # Remove from a reply what the person clearly never does: capitals at the
+    # start, a period at the end, emoji. See style.enforce.
+    enforce_style: bool = True
     # How the model writes: "chat" sends chat messages to an instruct model, and
     # "continue" gives a chat log to a base model to continue.
     mode: str = "chat"

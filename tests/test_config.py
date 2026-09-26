@@ -66,3 +66,18 @@ def test_convert_reads_true_and_false_in_words_and_in_toml():
     assert convert(True, "false") is False and convert(False, "YES") is True
     assert convert(True, False) is False
     assert convert(0, "3") == 3 and convert(Path("a"), "b") == Path("b")
+
+
+def test_a_true_or_false_setting_reads_the_words_of_the_file_and_of_the_environment(tmp_path):
+    path = tmp_path / "mimikr.toml"
+    path.write_text("enforce_style = false\n", encoding="utf-8")
+    assert load_config(path, environ={}).enforce_style is False
+    assert load_config(path, environ={"MIMIKR_ENFORCE_STYLE": "true"}).enforce_style is True
+    assert load_config(tmp_path / "none.toml", environ={"MIMIKR_ENFORCE_STYLE": "false"}).enforce_style is False
+
+
+def test_saved_true_or_false_is_valid_toml(tmp_path):
+    path = tmp_path / "mimikr.toml"
+    save_config(Config(enforce_style=False), path)
+    assert "enforce_style = false" in path.read_text(encoding="utf-8")
+    assert load_config(path, environ={}).enforce_style is False

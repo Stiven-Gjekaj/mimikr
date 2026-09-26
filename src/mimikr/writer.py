@@ -12,6 +12,7 @@ from mimikr.examples import Exchange
 from mimikr.identity import Identity
 from mimikr.prompt import HISTORY_BUDGET, build_messages, split_reply
 from mimikr.rooms import Room
+from mimikr.style import enforce
 
 MODES = ("chat", "continue")
 
@@ -37,12 +38,18 @@ def collect(pieces: Iterable[str], split: Callable[[str], list[str]], on_text: C
 
 def write_reply(identity: Identity, room: Room, names: dict[str, str], exchanges: list[Exchange] | None,
                 completer: Completer, model: str, temperature: float, mode: str,
-                on_text: Callable[[str], None] | None = None, history_budget: int = HISTORY_BUDGET) -> list[str]:
+                on_text: Callable[[str], None] | None = None, history_budget: int = HISTORY_BUDGET,
+                enforce_style: bool = False) -> list[str]:
     """Return the new messages of the identity.
+
+    With enforce_style, the messages lose what the person clearly never does.
 
     With on_text, and a completer that can stream, the function calls on_text
     with the text so far while the model writes.
     """
+    def finish(texts: list[str]) -> list[str]:
+        return enforce(identity.style, texts) if enforce_style else texts
+
     if mode == "chat":
         messages = build_messages(identity, room, names, exchanges, history_budget)
 
@@ -53,7 +60,7 @@ def write_reply(identity: Identity, room: Room, names: dict[str, str], exchanges
             reply = collect(completer.stream_complete(messages, model, temperature), split, on_text)
         else:
             reply = completer.complete(messages, model=model, temperature=temperature)
-        return split(reply)
+        return finish(split(reply))
     if mode == "continue":
         text, stop = build_continuation(identity, room, names, exchanges, history_budget)
         others = other_names(identity, room, names, exchanges)
@@ -65,5 +72,5 @@ def write_reply(identity: Identity, room: Room, names: dict[str, str], exchanges
             reply = collect(completer.stream_continue(text, model, temperature, stop), split, on_text)
         else:
             reply = completer.continue_text(text, model=model, temperature=temperature, stop=stop)
-        return split(reply)
+        return finish(split(reply))
     raise ModeError(f"the mode is {mode!r}. Use 'chat' or 'continue'")

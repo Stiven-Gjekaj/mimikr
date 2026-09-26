@@ -93,3 +93,38 @@ def build_profile(messages: list[Message], speaker: str) -> StyleProfile:
         stock_replies=[text for text, count in short.most_common(6) if count >= 2],
         messages_per_turn=statistics.mean(turns),
     )
+
+
+# The style is enforced only with this number of messages or more, because a
+# few messages do not show a habit.
+ENFORCE_MINIMUM = 5
+_FIRST_WORD = re.compile(r"^(\W*)(\w+)")
+
+
+def enforce(profile: StyleProfile, texts: list[str]) -> list[str]:
+    """Change the replies of the model where they break a clear habit of the person.
+
+    - Almost no message starts with a capital: make the first letter small,
+      except in "I", in "I'm", and in a word of capitals only, such as "NASA".
+    - Almost no message ends with a period: remove one period at the end, and
+      keep "..." as it is.
+    - No message has an emoji: remove the emoji.
+    """
+    if profile.message_count < ENFORCE_MINIMUM:
+        return texts
+    result = []
+    for text in texts:
+        if profile.emoji_rate == 0:
+            text = re.sub(r" {2,}", " ", _EMOJI.sub("", text)).strip()
+        if profile.lowercase_start >= 0.9:
+            match = _FIRST_WORD.match(text)
+            if match:
+                word = match[2]
+                keep = word == "I" or (word.isupper() and len(word) > 1) or word.startswith("I'")
+                if not keep:
+                    text = match[1] + word[0].lower() + word[1:] + text[match.end():]
+        if profile.ends_with_period <= 0.05 and text.endswith(".") and not text.endswith(".."):
+            text = text[:-1]
+        if text:
+            result.append(text)
+    return result

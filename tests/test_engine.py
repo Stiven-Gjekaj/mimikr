@@ -189,3 +189,13 @@ def test_the_engine_uses_the_history_budget_of_the_settings(tmp_path):
     engine.speak(room, "ana")
     sent = "\n".join(m["content"] for m in model.requests[0]["messages"][1:])
     assert "message 49" in sent and "message 0\n" not in sent
+
+
+def test_the_engine_enforces_the_style_of_the_transcript(tmp_path):
+    engine = make_engine(tmp_path, FakeModel(reply="Sure thing."), people=("ana",))
+    (tmp_path / "identities" / "ana" / "chat.md").write_text(
+        "\n".join(f"June: q{n}\nana: yeah ok {n}" for n in range(6)), encoding="utf-8")
+    room = engine.create_room("r", ["ana"])
+    assert [m.text for m in engine.speak(room, "ana")] == ["sure thing"]
+    engine.config.enforce_style = False
+    assert [m.text for m in engine.speak(room, "ana")] == ["Sure thing."]
