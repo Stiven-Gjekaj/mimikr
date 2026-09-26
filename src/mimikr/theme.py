@@ -164,6 +164,9 @@ QLabel#mine {{ background: {p.accent}; color: {p.accent_text}; border-radius: 16
 QLabel#avatar {{ color: #ffffff; font-size: {small}px; font-weight: 700; border-radius: 14px; }}
 
 QWidget#composerBox {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 16px; }}
+QPlainTextEdit {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 8px; padding: 6px;
+    selection-background-color: {p.accent}; selection-color: {p.accent_text}; }}
+QPlainTextEdit:focus {{ border: 1px solid {p.accent}; }}
 QPlainTextEdit#composer {{ background: transparent; border: none; padding: 4px 2px; }}
 QWidget#toolbar {{ background: transparent; }}
 

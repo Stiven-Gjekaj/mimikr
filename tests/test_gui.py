@@ -557,3 +557,95 @@ def test_search_filters_the_rooms_and_marks_the_matches(application, tmp_path):
     assert marked == ["noodles always"]
     window.search.clear()
     assert window.rooms.count() == 2
+
+
+WHATSAPP_EXPORT = "1/1/24, 10:00 AM - June: noodles?\n1/1/24, 10:01 AM - ana_k: say less\n1/1/24, 10:02 AM - ana_k: 1pm\n"
+
+
+def test_make_a_new_identity_from_the_window(application, tmp_path):
+    from mimikr.gui import IDENTITIES_PAGE
+
+    window = make_window(tmp_path, FakeModel())
+    window.ask_name = lambda: "June Park"
+    window.new_identity()
+    assert window.pages.currentIndex() == IDENTITIES_PAGE
+    assert window.editing_id == "june-park"
+    assert (tmp_path / "identities" / "june-park" / "personality.md").is_file()
+
+
+def test_edit_and_save_an_identity(application, tmp_path):
+    from mimikr.editing import read_settings
+    from mimikr.identity import load_identity
+
+    window = make_window(tmp_path, FakeModel())
+    window.show_identities(select="ana")
+    window.edit_personality.setPlainText("A nurse who hikes.")
+    window.edit_name.setText("Ana K")
+    window.edit_temperature.setText("0.6")
+    window.edit_mode.setCurrentIndex(window.edit_mode.findData("continue"))
+    window.save_identity()
+    identity = load_identity(tmp_path / "identities" / "ana")
+    assert (identity.display_name, identity.personality) == ("Ana K", "A nurse who hikes.")
+    assert read_settings(tmp_path / "identities" / "ana") == {
+        "display_name": "Ana K", "temperature": 0.6, "mode": "continue"}
+    assert window.identity_note.text() == "Saved."
+
+
+def test_a_wrong_temperature_is_refused(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    window.show_identities(select="ana")
+    window.edit_temperature.setText("warm")
+    window.save_identity()
+    assert "as a number" in window.identity_note.text()
+
+
+def test_import_a_whatsapp_export_into_an_identity(application, tmp_path):
+    from mimikr.identity import load_identity
+
+    export = tmp_path / "chat.txt"
+    export.write_text(WHATSAPP_EXPORT, encoding="utf-8")
+    window = make_window(tmp_path, FakeModel())
+    window.show_identities(select="ana")
+    offered = []
+    window.pick_speaker = lambda labels, preselect: offered.append((labels, preselect)) or 0
+    window.import_chat("ana", export)
+    assert offered == [(["ana_k (2 messages)", "June (1 message)"], 0)]
+    identity = load_identity(tmp_path / "identities" / "ana")
+    assert identity.speaker == "ana_k" and identity.style.message_count == 2
+    assert "2 messages from ana_k" in window.chat_summary.text()
+
+
+def test_an_import_asks_before_it_writes_over_a_chat(application, tmp_path):
+    export = tmp_path / "chat.txt"
+    export.write_text(WHATSAPP_EXPORT, encoding="utf-8")
+    window = make_window(tmp_path, FakeModel())
+    chat = tmp_path / "identities" / "ana" / "chat.md"
+    chat.write_text("ana: keep me\n", encoding="utf-8")
+    window.show_identities(select="ana")
+    window.pick_speaker = lambda labels, preselect: 0
+    window.confirm = lambda question: False
+    window.import_chat("ana", export)
+    assert chat.read_text(encoding="utf-8") == "ana: keep me\n"
+    window.confirm = lambda question: True
+    window.import_chat("ana", export)
+    assert "say less" in chat.read_text(encoding="utf-8")
+
+
+def test_a_chat_md_file_imports_too(application, tmp_path):
+    source = tmp_path / "old.md"
+    source.write_text("June: hi\nana: hey\n", encoding="utf-8")
+    window = make_window(tmp_path, FakeModel())
+    window.show_identities(select="ana")
+    window.pick_speaker = lambda labels, preselect: preselect
+    window.import_chat("ana", source)
+    assert (tmp_path / "identities" / "ana" / "chat.md").read_text(encoding="utf-8") == "June: hi\nana: hey\n"
+
+
+def test_a_file_that_is_no_chat_is_refused(application, tmp_path):
+    source = tmp_path / "notes.txt"
+    source.write_text("shopping list\nmilk\n", encoding="utf-8")
+    window = make_window(tmp_path, FakeModel())
+    window.show_identities(select="ana")
+    window.import_chat("ana", source)
+    assert "does not know this file" in window.identity_note.text()
+    assert not (tmp_path / "identities" / "ana" / "chat.md").exists()

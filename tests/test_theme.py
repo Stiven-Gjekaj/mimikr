@@ -61,3 +61,8 @@ def test_initials_take_the_first_and_the_last_word():
 def test_an_identity_keeps_its_avatar_color():
     assert avatar_color("sam") == avatar_color("sam")
     assert len({avatar_color(name) for name in ("sam", "june", "ana", "bo", "cy", "di")}) > 1
+
+
+def test_each_text_field_has_the_colors_of_the_theme():
+    sheet = stylesheet(palette(True, "violet"))
+    assert "QPlainTextEdit { background: #181b21" in sheet

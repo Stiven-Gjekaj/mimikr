@@ -55,7 +55,11 @@ from PySide6.QtWidgets import (
 from mimikr import theme
 from mimikr.avatars import AvatarStore
 from mimikr.config import Config, embedding_base_url, save_config
+from mimikr import editing
 from mimikr.engine import EngineError, RoomEngine
+from mimikr.identity import IdentityError, load_identity
+from mimikr.importers import ExportError, read_export
+from mimikr.transcript import TranscriptError, parse_transcript
 from mimikr.export import file_name, room_as_text
 from mimikr.llm import ChatClient, LLMError
 from mimikr.rooms import USER, Room, RoomMessage, matches, search_rooms
@@ -64,7 +68,7 @@ from mimikr.servers import check_servers
 BUBBLE_WIDTH = 520
 AVATAR_SIZE = 28
 # The pages of the main area.
-EMPTY_PAGE, ROOM_PAGE, SETTINGS_PAGE = 0, 1, 2
+EMPTY_PAGE, ROOM_PAGE, SETTINGS_PAGE, IDENTITIES_PAGE = 0, 1, 2, 3
 
 
 _round_pictures: dict[tuple[str, float, int, float], QPixmap] = {}
@@ -656,6 +660,27 @@ class SettingsPage(QScrollArea):
         self.look_changed.emit()
 
 
+class DropArea(QWidget):
+    """A page that takes a file that the user drops on it."""
+
+    dropped = Signal(object)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event):
+        if any(url.isLocalFile() for url in event.mimeData().urls()):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        for url in event.mimeData().urls():
+            if url.isLocalFile():
+                self.dropped.emit(Path(url.toLocalFile()))
+                event.acceptProposedAction()
+                return
+
+
 class MainWindow(QMainWindow):
     def __init__(self, engine: RoomEngine, config_path: Path = Path("mimikr.toml"),
                  reconnect: Callable[[Config], None] | None = None):
@@ -667,6 +692,14 @@ class MainWindow(QMainWindow):
         self.reconnect = reconnect
         # Ask the user for an image file. A test puts a function here that gives a path.
         self.pick_image: Callable[[], Path | None] = self.ask_for_image
+        # Ask the user for the name of a new identity.
+        self.ask_name: Callable[[], str | None] = self.ask_for_name
+        # Ask the user which name in an export is the person. It gets "name (count)" labels.
+        self.pick_speaker: Callable[[list[str], int], int | None] = self.ask_for_speaker
+        # Ask the user a question with yes or no.
+        self.confirm: Callable[[str], bool] = self.ask_to_confirm
+        # Ask the user for a chat export to import.
+        self.pick_export: Callable[[], Path | None] = self.ask_for_export
         # Ask the user for the new text of a message. It gets the old text.
         self.ask_text: Callable[[str], str | None] = self.ask_for_text
         # Ask the user where to save an export. It gets a suggested name.
@@ -698,6 +731,7 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.build_empty_page())
         self.pages.addWidget(self.build_room_page())
         self.pages.addWidget(self.build_settings_page())
+        self.pages.addWidget(self.build_identities_page())
 
         main = QWidget(objectName="main")
         layout = QHBoxLayout(main)
@@ -746,6 +780,9 @@ class MainWindow(QMainWindow):
         self.identity_errors.hide()
         side.addWidget(self.identity_errors)
 
+        self.identities_button = QPushButton("Identities", objectName="ghost", checkable=True)
+        self.identities_button.clicked.connect(self.toggle_identities)
+        side.addWidget(self.identities_button)
         self.settings_button = QPushButton("Settings", objectName="ghost", checkable=True)
         self.settings_button.clicked.connect(self.toggle_settings)
         side.addWidget(self.settings_button)
@@ -889,10 +926,253 @@ class MainWindow(QMainWindow):
         else:
             self.show_settings()
 
+    def toggle_identities(self) -> None:
+        if self.pages.currentIndex() == IDENTITIES_PAGE:
+            self.open_room(self.room.id if self.room else None)
+        else:
+            self.show_identities()
+
+    def show_identities(self, select: str | None = None) -> None:
+        self.settings_button.setChecked(False)
+        self.identities_button.setChecked(True)
+        self.refresh_identities(select)
+        self.pages.setCurrentIndex(IDENTITIES_PAGE)
+
     def show_settings(self) -> None:
+        self.identities_button.setChecked(False)
         self.settings_button.setChecked(True)
         self.refresh_pictures()
         self.pages.setCurrentIndex(SETTINGS_PAGE)
+
+    # Identities
+
+    def build_identities_page(self) -> QWidget:
+        page = DropArea(objectName="page")
+        page.dropped.connect(lambda path: self.import_chat(self.editing_id, path) if self.editing_id else None)
+        outer = QHBoxLayout(page)
+        outer.setContentsMargins(32, 28, 32, 28)
+        outer.setSpacing(24)
+
+        left = QVBoxLayout()
+        left.setSpacing(10)
+        left.addWidget(QLabel("Identities", objectName="title"))
+        self.identity_list = QListWidget(objectName="rooms")
+        self.identity_list.setFixedWidth(240)
+        self.identity_list.currentItemChanged.connect(
+            lambda item, _previous: self.edit_identity(item.data(Qt.ItemDataRole.UserRole) if item else None))
+        left.addWidget(self.identity_list, 1)
+        new_identity = QPushButton("+  New identity", objectName="primary")
+        new_identity.clicked.connect(self.new_identity)
+        left.addWidget(new_identity)
+        outer.addLayout(left)
+
+        editor = QScrollArea()
+        editor.setWidgetResizable(True)
+        editor.setFrameShape(QScrollArea.Shape.NoFrame)
+        body = QWidget(objectName="page")
+        column = QVBoxLayout(body)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(18)
+
+        profile = SettingsPage.card("Profile", "The files of this identity. Save writes them.")
+        form = SettingsPage.form(profile)
+        self.edit_name = QLineEdit()
+        self.edit_speaker = QComboBox()
+        self.edit_personality = QPlainTextEdit()
+        self.edit_personality.setMinimumHeight(150)
+        self.edit_model = QLineEdit(placeholderText="The model in the settings")
+        self.edit_temperature = QLineEdit(placeholderText="The temperature in the settings")
+        self.edit_mode = QComboBox()
+        self.edit_mode.addItem("The mode in the settings", "")
+        self.edit_mode.addItem("Chat", "chat")
+        self.edit_mode.addItem("Continue", "continue")
+        form.addRow(SettingsPage.label("Name"), self.edit_name)
+        form.addRow(SettingsPage.label("Name in chat.md"), self.edit_speaker)
+        form.addRow(SettingsPage.label("Personality"), self.edit_personality)
+        form.addRow(SettingsPage.label("Model"), self.edit_model)
+        form.addRow(SettingsPage.label("Temperature"), self.edit_temperature)
+        form.addRow(SettingsPage.label("Mode"), self.edit_mode)
+        self.identity_note = QLabel(objectName="hint", wordWrap=True)
+        save = QPushButton("Save", objectName="primary")
+        save.clicked.connect(self.save_identity)
+        actions = QHBoxLayout()
+        actions.addWidget(self.identity_note, 1)
+        actions.addWidget(save)
+        profile.layout().addSpacing(8)
+        profile.layout().addLayout(actions)
+        column.addWidget(profile)
+
+        chat = SettingsPage.card("Chat", "Import an export of WhatsApp, Telegram Desktop or DiscordChatExporter, "
+                                         "or a chat.md file. You can also drop the file on this page.")
+        self.chat_summary = QLabel(objectName="hint", wordWrap=True)
+        self.chat_summary.setTextFormat(Qt.TextFormat.PlainText)
+        chat.layout().addWidget(self.chat_summary)
+        import_button = QPushButton("Import a chat...")
+        import_button.clicked.connect(lambda: self.import_chat(self.editing_id) if self.editing_id else None)
+        chat.layout().addSpacing(6)
+        chat.layout().addWidget(import_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        column.addWidget(chat)
+        column.addStretch(1)
+        editor.setWidget(body)
+        self.identity_editor = editor
+        outer.addWidget(editor, 1)
+        self.editing_id: str | None = None
+        return page
+
+    def refresh_identities(self, select: str | None = None) -> None:
+        select = select or self.editing_id
+        identities, errors = self.engine.identities()
+        self.identity_list.blockSignals(True)
+        self.identity_list.clear()
+        chosen = None
+        for identity in identities.values():
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, identity.id)
+            card = QWidget()
+            card.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            line = QHBoxLayout(card)
+            line.setContentsMargins(10, 8, 10, 8)
+            line.setSpacing(10)
+            line.addWidget(avatar(identity.id, identity.display_name, 32, self.avatars.find("identity", identity.id)))
+            line.addWidget(QLabel(identity.display_name, objectName="roomTitle"), 1)
+            item.setSizeHint(QSize(0, card.sizeHint().height()))
+            self.identity_list.addItem(item)
+            self.identity_list.setItemWidget(item, card)
+            if identity.id == select or chosen is None:
+                chosen = item
+        self.identity_list.blockSignals(False)
+        if chosen is not None:
+            self.identity_list.setCurrentItem(chosen)
+            self.edit_identity(chosen.data(Qt.ItemDataRole.UserRole))
+        else:
+            self.edit_identity(None)
+        if errors:
+            self.identity_note.setText("\n".join(f"{name}: {error}" for name, error in errors.items()))
+
+    def edit_identity(self, identity_id: str | None) -> None:
+        """Show the files of an identity in the editor."""
+        self.editing_id = identity_id
+        self.identity_editor.setEnabled(identity_id is not None)
+        self.identity_note.setText("")
+        if identity_id is None:
+            self.chat_summary.setText("Make a new identity on the left.")
+            return
+        directory = self.engine.config.identities_dir / identity_id
+        try:
+            identity = load_identity(directory)
+        except (IdentityError, TranscriptError, ValueError) as error:
+            self.identity_note.setText(str(error))
+            return
+        settings = editing.read_settings(directory)
+        self.edit_name.setText(identity.display_name)
+        self.edit_personality.setPlainText(identity.personality)
+        self.edit_model.setText(str(settings.get("model", "")))
+        self.edit_temperature.setText(str(settings.get("temperature", "")))
+        self.edit_mode.setCurrentIndex(max(0, self.edit_mode.findData(settings.get("mode", ""))))
+        speakers = list(dict.fromkeys(message.speaker for message in identity.transcript))
+        self.edit_speaker.clear()
+        self.edit_speaker.addItems(speakers)
+        self.edit_speaker.setEnabled(bool(speakers))
+        if identity.speaker:
+            self.edit_speaker.setCurrentText(identity.speaker)
+            lines = [f"{identity.style.message_count} messages from {identity.speaker} in chat.md."]
+            lines += [f"- {line}" for line in identity.style.describe()]
+            self.chat_summary.setText("\n".join(lines))
+        else:
+            self.chat_summary.setText("No chat.md yet. The identity writes from its personality only.")
+
+    def save_identity(self) -> None:
+        if self.editing_id is None:
+            return
+        directory = self.engine.config.identities_dir / self.editing_id
+        temperature = self.edit_temperature.text().strip()
+        try:
+            value = float(temperature) if temperature else None
+        except ValueError:
+            self.identity_note.setText("Write the temperature as a number, for example 0.7, or leave it empty.")
+            return
+        try:
+            editing.save_personality(directory, self.edit_personality.toPlainText())
+        except editing.EditError as error:
+            self.identity_note.setText(str(error).capitalize() + ".")
+            return
+        editing.save_settings(directory, {
+            "display_name": self.edit_name.text().strip(),
+            "speaker": self.edit_speaker.currentText() if self.edit_speaker.isEnabled() else None,
+            "model": self.edit_model.text().strip(),
+            "temperature": value,
+            "mode": self.edit_mode.currentData(),
+        })
+        self.reload_rooms()
+        self.refresh_identities(self.editing_id)
+        self.identity_note.setText("Saved.")
+
+    def ask_for_name(self) -> str | None:
+        name, ok = QInputDialog.getText(self, "New identity", "Name")
+        return name if ok and name.strip() else None
+
+    def ask_for_speaker(self, labels: list[str], preselect: int) -> int | None:
+        label, ok = QInputDialog.getItem(self, "Import a chat", "Which name is this person?", labels, preselect, False)
+        return labels.index(label) if ok else None
+
+    def ask_to_confirm(self, question: str) -> bool:
+        return QMessageBox.question(self, "mimikr", question) == QMessageBox.StandardButton.Yes
+
+    def ask_for_export(self) -> Path | None:
+        path, _ = QFileDialog.getOpenFileName(self, "Import a chat", str(Path.home() / "Downloads"),
+                                              "Chat exports (*.txt *.json *.md);;All files (*)")
+        return Path(path) if path else None
+
+    def new_identity(self) -> None:
+        name = self.ask_name()
+        if name is None:
+            return
+        try:
+            directory = editing.create_identity(self.engine.config.identities_dir, name)
+        except editing.EditError as error:
+            QMessageBox.warning(self, "mimikr", str(error).capitalize() + ".")
+            return
+        self.show_identities(select=directory.name)
+
+    def import_chat(self, identity_id: str, path: Path | None = None) -> None:
+        """Read an export or a chat.md file, ask which name is the person, and write chat.md."""
+        path = path or self.pick_export()
+        if path is None:
+            return
+        try:
+            text = path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeDecodeError) as error:
+            self.identity_note.setText(f"Cannot read {path.name}: {error}")
+            return
+        try:
+            _, messages = read_export(text)
+        except ExportError as error:
+            try:
+                messages = parse_transcript(text)
+            except TranscriptError:
+                messages = []
+            if not messages:
+                self.identity_note.setText(str(error).capitalize() + ".")
+                return
+        counts: dict[str, int] = {}
+        for message in messages:
+            counts[message.speaker] = counts.get(message.speaker, 0) + 1
+        names = sorted(counts, key=lambda name: -counts[name])
+        wanted = self.edit_name.text().strip().casefold()
+        preselect = next((index for index, name in enumerate(names) if name.casefold() == wanted), 0)
+        choice = self.pick_speaker(
+            [f"{name} ({counts[name]} {'message' if counts[name] == 1 else 'messages'})" for name in names], preselect)
+        if choice is None:
+            return
+        directory = self.engine.config.identities_dir / identity_id
+        replace_chat = False
+        if (directory / "chat.md").exists():
+            if not self.confirm(f"Write over the chat.md of {self.edit_name.text()}?"):
+                return
+            replace_chat = True
+        editing.save_chat(directory, messages, names[choice], replace=replace_chat)
+        self.refresh_identities(identity_id)
+        self.identity_note.setText(f"Imported {len(messages)} messages from {path.name}.")
 
     # Message actions
 
@@ -1108,6 +1388,7 @@ class MainWindow(QMainWindow):
 
     def open_room(self, room_id: str | None) -> None:
         self.settings_button.setChecked(False)
+        self.identities_button.setChecked(False)
         if room_id is None:
             self.room = None
             self.pages.setCurrentIndex(EMPTY_PAGE)
