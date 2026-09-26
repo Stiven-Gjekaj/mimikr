@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from mimikr.config import Config
+from mimikr.config import Config, embedding_base_url
 from mimikr.engine import EngineError, RoomEngine
 from mimikr.llm import ChatClient, LLMError
 from mimikr.rooms import USER, Room, RoomMessage
@@ -401,6 +401,12 @@ class MainWindow(QMainWindow):
 def run(config: Config) -> int:
     application = QApplication.instance() or QApplication(sys.argv)
     application.setApplicationName("mimikr")
-    window = MainWindow(RoomEngine(config, ChatClient(config.base_url, config.api_key)))
+    chat = ChatClient(config.base_url, config.api_key)
+    embedding_client = ChatClient(embedding_base_url(config), config.api_key)
+
+    def embed(texts: list[str]) -> list[list[float]]:
+        return embedding_client.embed(texts, config.embedding_model)
+
+    window = MainWindow(RoomEngine(config, chat, embed))
     window.show()
     return application.exec()

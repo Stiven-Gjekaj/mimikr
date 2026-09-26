@@ -1,5 +1,7 @@
 import pytest
 
+from test_evaluate import WordEmbedder
+
 from mimikr.config import Config
 from mimikr.engine import EngineError, RoomEngine
 
@@ -57,4 +59,58 @@ def test_a_removed_identity_gives_an_error(tmp_path):
     room = engine.create_room("r", ["ana"])
     (tmp_path / "identities" / "ana" / "personality.md").unlink()
     with pytest.raises(EngineError, match="does not exist"):
+        engine.speak(room, "ana")
+
+
+NOODLE_CHAT = "\n".join([
+    "June: how was the kitchen shift", "Ana: chaos as usual",
+    "June: want noodles for lunch", "Ana: noodles always",
+    "June: did you watch the football match", "Ana: we lost again",
+])
+
+
+def similar_engine(tmp_path, model, embed=None):
+    engine = make_engine(tmp_path, model, people=("ana",))
+    (tmp_path / "identities" / "ana" / "chat.md").write_text(NOODLE_CHAT, encoding="utf-8")
+    engine.config.examples = "similar"
+    engine.embed = embed
+    return engine
+
+
+def test_similar_examples_put_the_matching_exchange_into_the_prompt(tmp_path, monkeypatch):
+    monkeypatch.setattr("mimikr.prompt.EXAMPLE_BUDGET", 60)
+    model = FakeModel()
+    engine = similar_engine(tmp_path, model, WordEmbedder())
+    room = engine.create_room("r", ["ana"])
+    engine.post_user_message(room, "noodles tonight?")
+    engine.speak(room, "ana")
+    system = model.requests[0]["messages"][0]["content"]
+    assert "Ana: noodles always" in system
+    assert "football" not in system and "kitchen" not in system
+    assert (tmp_path / "data" / "index" / "ana.json").is_file()
+
+
+def test_recent_examples_ignore_the_message(tmp_path, monkeypatch):
+    monkeypatch.setattr("mimikr.prompt.EXAMPLE_BUDGET", 60)
+    model = FakeModel()
+    engine = similar_engine(tmp_path, model, WordEmbedder())
+    engine.config.examples = "recent"
+    room = engine.create_room("r", ["ana"])
+    engine.post_user_message(room, "noodles tonight?")
+    engine.speak(room, "ana")
+    assert "Ana: we lost again" in model.requests[0]["messages"][0]["content"]
+
+
+def test_similar_examples_need_an_embedding_model(tmp_path):
+    engine = similar_engine(tmp_path, FakeModel(), embed=None)
+    room = engine.create_room("r", ["ana"])
+    with pytest.raises(EngineError, match="needs an embedding model"):
+        engine.speak(room, "ana")
+
+
+def test_an_unknown_examples_setting_is_an_error(tmp_path):
+    engine = similar_engine(tmp_path, FakeModel(), WordEmbedder())
+    engine.config.examples = "best"
+    room = engine.create_room("r", ["ana"])
+    with pytest.raises(EngineError, match="'recent' or 'similar'"):
         engine.speak(room, "ana")
