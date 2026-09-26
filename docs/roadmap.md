@@ -82,7 +82,7 @@ The code is built: `examples = "similar"` in rooms, and `--examples similar` in
 and that the prompt holds the exchange that matches the question. The exit
 test itself runs in P4.
 
-## P4: the choice of mode and of examples (open)
+## P4: the choice of mode and of examples (done)
 
 **Goal:** a default mode and choice of examples, with Mistral Nemo 12B Instruct.
 
@@ -103,6 +103,10 @@ So P4 compares the ways to use one model, and not models.
 
 **Exit test:** the milestones hold the table of scores, and the defaults match
 the winner.
+
+Done on 26 September 2026. The continue mode with recent examples scored 0.92
+for style, and the chat mode 0.71. [The milestones](milestones.md) hold the
+table, and the defaults now match it.
 
 ## P5: importers (built)
 
@@ -155,5 +159,4 @@ These came after the plan of P1 to P7. Each is built and has tests.
 
 Still open:
 
-- P4: the run with the real model and a real transcript.
 
