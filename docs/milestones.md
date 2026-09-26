@@ -232,3 +232,34 @@ thread sends each new message to the window through a Qt signal.
 Many people send three short messages and not one long one.
 If the transcript shows that, the prompt asks for one message on each line,
 and the program makes one message from each line.
+
+### A style sheet of our own, from a few colors
+
+The window draws its own look, in light and dark, from one set of color tokens
+in `theme.py`. The system theme chooses light or dark, unless the settings
+choose one. The accent is a named color or any `#rrggbb` color. The text on the
+accent is white or near black, whichever has more contrast.
+
+A test checks the contrast of the text and of the muted text against the
+background in both palettes. Each is 4.5 or more, which WCAG AA asks for.
+
+- **The native look of each system** lost. Qt draws native controls well, but a
+  chat window needs round bubbles, avatars and a composer that native controls
+  do not have. A mix of native controls and drawn bubbles looked like two
+  programs.
+- **A QML interface** lost. It makes animation easy, but it is a second
+  language and a second way to test. The widgets of Qt do the job.
+
+### Settings in the window
+
+The settings page writes `mimikr.toml`, the same file that a person can edit.
+A change of the look shows at once, and **Revert** takes it back. A change of
+the servers takes effect at **Save**, when the window makes new clients.
+
+**Test connection** checks the values in the fields, before the save. It asks
+the chat server for `/v1/models`, and the embedding server for one embedding,
+because those two requests show that each server answers with the model that
+mimikr will ask for.
+
+The folders of the identities and of the rooms are not on the page. A change
+of them needs a new start, and a person who moves the data can edit the file.
