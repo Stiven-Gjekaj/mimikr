@@ -221,6 +221,27 @@ of encryption and the media line.
 | `telegram` | `result.json` from **Export chat history** in Telegram Desktop, as JSON, for one chat |
 | `discord` | The JSON export of one channel from [DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter) |
 
+### Export a Discord chat
+
+[DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter) makes the
+export. It is MIT, it has a window and a command line, and each release has a
+build for macOS on Apple silicon. The reader of mimikr matches the JSON of
+version 2.48, the release of 27 August 2026.
+
+```bash
+./DiscordChatExporter.Cli export -t TOKEN -c CHANNEL_ID -f Json -o sam.json
+uv run mimikr import discord sam.json -o identities/sam/chat.md
+```
+
+> [!WARNING]
+> **The token decides what you can export, and what it costs.**
+> A bot token reads the channels of a server that the bot is in, and Discord
+> allows this.
+> A direct message needs the token of your own account. The authors of the
+> tool warn that automating a user account is against the Terms of Service of
+> Discord, and that Discord can ban the account.
+> mimikr does not ask for a token and never sees one.
+
 The import skips notices, deleted messages, and files with no text.
 It does not write over a file unless you add `--force`.
 With no `-o`, it writes to the standard output.
