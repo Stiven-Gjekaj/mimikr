@@ -1,0 +1,22 @@
+# Operating system files.
+.DS_Store
+Thumbs.db
+
+# Editor and tool directories.
+.idea/
+.vscode/
+.claude/
+
+# Identities, rooms and settings hold data about real people.
+# They stay on the computer of the person who made them.
+/identities/
+/data/
+/mimikr.toml
+
+# Python.
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+/build/
+/dist/
