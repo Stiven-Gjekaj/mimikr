@@ -391,3 +391,41 @@ def test_the_room_picture_shows_in_the_header_and_goes_with_the_room(application
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
     window.delete_room()
     assert not window.avatars.path_for("room", room.id).exists()
+
+
+def test_export_writes_the_room_to_a_text_file(application, tmp_path):
+    window = make_window(tmp_path, FakeModel(reply="hey"))
+    room = window.engine.create_room("Late night", ["ana"])
+    window.select_room(room.id)
+    window.composer.setPlainText("anyone up?")
+    window.send()
+    wait_until_idle(application, window)
+    suggested = []
+    target = tmp_path / "out" / "late"
+    target.parent.mkdir()
+    window.pick_save_path = lambda name: suggested.append(name) or target
+    window.export_to_file()
+    text = (tmp_path / "out" / "late.txt").read_text(encoding="utf-8")
+    assert suggested[0].startswith("Late night ") and suggested[0].endswith(".txt")
+    assert "# A language model wrote the messages of ana." in text
+    assert "] You: anyone up?\n" in text and "] ana: hey\n" in text
+    assert window.status.text().startswith("Exported to ")
+
+
+def test_copy_puts_the_room_on_the_clipboard(application, tmp_path):
+    from PySide6.QtGui import QGuiApplication
+
+    window = make_window(tmp_path, FakeModel())
+    room = window.engine.create_room("Late night", ["ana"])
+    window.select_room(room.id)
+    window.copy_as_text()
+    assert QGuiApplication.clipboard().text().startswith("# Late night\n# With ana.\n")
+
+
+def test_a_cancelled_export_writes_nothing(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    room = window.engine.create_room("r", ["ana"])
+    window.select_room(room.id)
+    window.pick_save_path = lambda name: None
+    window.export_to_file()
+    assert window.status.text() == ""

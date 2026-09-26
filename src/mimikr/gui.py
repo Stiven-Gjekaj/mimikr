@@ -53,6 +53,7 @@ from mimikr import theme
 from mimikr.avatars import AvatarStore
 from mimikr.config import Config, embedding_base_url, save_config
 from mimikr.engine import EngineError, RoomEngine
+from mimikr.export import file_name, room_as_text
 from mimikr.llm import ChatClient, LLMError
 from mimikr.rooms import USER, Room, RoomMessage
 from mimikr.servers import check_servers
@@ -627,6 +628,8 @@ class MainWindow(QMainWindow):
         self.reconnect = reconnect
         # Ask the user for an image file. A test puts a function here that gives a path.
         self.pick_image: Callable[[], Path | None] = self.ask_for_image
+        # Ask the user where to save an export. It gets a suggested name.
+        self.pick_save_path: Callable[[str], Path | None] = self.ask_for_save_path
         self.room: Room | None = None
         self.busy = False
         self.bridge = Bridge()
@@ -738,6 +741,11 @@ class MainWindow(QMainWindow):
         heading.addWidget(self.title)
         heading.addWidget(self.subtitle)
         head.addLayout(heading, 1)
+        self.export_button = QPushButton("Export")
+        self.export_button.setToolTip("Save the room as a text file, or copy it as text")
+        self.export_button.clicked.connect(self.export_menu)
+        head.addWidget(self.export_button, alignment=Qt.AlignmentFlag.AlignVCenter)
+        head.addSpacing(6)
         delete = QPushButton("Delete room", objectName="danger")
         delete.clicked.connect(self.delete_room)
         head.addWidget(delete, alignment=Qt.AlignmentFlag.AlignVCenter)
@@ -813,6 +821,7 @@ class MainWindow(QMainWindow):
             ("New room", QKeySequence.StandardKey.New, self.new_room),
             ("Next speaker", QKeySequence("Ctrl+Shift+Return"), self.next_speaker),
             ("Reload identities", QKeySequence.StandardKey.Refresh, self.reload_rooms),
+            ("Export as text file...", QKeySequence("Ctrl+E"), self.export_to_file),
             ("Settings", QKeySequence.StandardKey.Preferences, self.show_settings),
         ):
             action = QAction(text, self)
@@ -837,6 +846,47 @@ class MainWindow(QMainWindow):
         self.settings_button.setChecked(True)
         self.refresh_pictures()
         self.pages.setCurrentIndex(SETTINGS_PAGE)
+
+    # Export
+
+    def room_text(self) -> str:
+        identities, _ = self.engine.identities()
+        names = {USER: "You"} | {key: value.display_name for key, value in identities.items()}
+        return room_as_text(self.engine.store.get(self.room.id), names)
+
+    def ask_for_save_path(self, suggested: str) -> Path | None:
+        start = Path.home() / "Documents" / suggested
+        path, _ = QFileDialog.getSaveFileName(self, "Export the room", str(start), "Text (*.txt)")
+        return Path(path) if path else None
+
+    def export_menu(self) -> None:
+        if self.room is None:
+            return
+        menu = QMenu(self)
+        menu.addAction("Save as text file...", self.export_to_file)
+        menu.addAction("Copy as text", self.copy_as_text)
+        menu.exec(self.export_button.mapToGlobal(self.export_button.rect().bottomLeft()))
+
+    def export_to_file(self) -> None:
+        if self.room is None:
+            return
+        path = self.pick_save_path(file_name(self.room))
+        if path is None:
+            return
+        if path.suffix == "":
+            path = path.with_suffix(".txt")
+        try:
+            path.write_text(self.room_text(), encoding="utf-8")
+        except OSError as error:
+            self.set_status(f"Cannot write {path}: {error.strerror}", error=True)
+            return
+        self.set_status(f"Exported to {path}")
+
+    def copy_as_text(self) -> None:
+        if self.room is None:
+            return
+        QGuiApplication.clipboard().setText(self.room_text())
+        self.set_status("Copied the room as text.")
 
     # Pictures
 
