@@ -2,6 +2,7 @@
 answers /health and /v1/models. With --fail, it stops at once."""
 
 import json
+import socketserver
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -11,7 +12,6 @@ if "--fail" in arguments:
     sys.exit(1)
 port = int(arguments[arguments.index("--port") + 1])
 alias = arguments[arguments.index("--alias") + 1]
-print(f"listening on {port} as {alias}", flush=True)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -27,4 +27,14 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+class Server(HTTPServer):
+    def server_bind(self):
+        # HTTPServer asks the DNS for the name of the address. On some macOS
+        # machines that lookup takes minutes, so skip it.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = "127.0.0.1", port
+
+
+server = Server(("127.0.0.1", port), Handler)
+print(f"listening on {port} as {alias}", flush=True)
+server.serve_forever()
