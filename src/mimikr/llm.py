@@ -35,7 +35,10 @@ def clip_for_embedding(text: str, budget: int = EMBED_TOKENS) -> str:
 
 
 class ChatClient:
-    def __init__(self, base_url: str, api_key: str, transport: httpx.BaseTransport | None = None):
+    def __init__(self, base_url: str, api_key: str, transport: httpx.BaseTransport | None = None,
+                 sampling: dict | None = None):
+        # Options that go with each request for text, for example frequency_penalty.
+        self.sampling = dict(sampling or {})
         self._client = httpx.Client(
             base_url=base_url.rstrip("/") + "/",
             headers={"Authorization": f"Bearer {api_key}"},
@@ -47,7 +50,7 @@ class ChatClient:
         try:
             response = self._client.post(
                 "chat/completions",
-                json={"model": model, "messages": messages, "temperature": temperature},
+                json={**self.sampling, "model": model, "messages": messages, "temperature": temperature},
             )
         except httpx.HTTPError as error:
             raise LLMError(f"cannot reach the model server at {self._client.base_url}: {error}") from error
@@ -61,7 +64,7 @@ class ChatClient:
     def continue_text(self, prompt: str, model: str, temperature: float, stop: list[str],
                       max_tokens: int = 200) -> str:
         """Continue a text with the completions API. A base model uses this API."""
-        payload = {"model": model, "prompt": prompt, "temperature": temperature,
+        payload = {**self.sampling, "model": model, "prompt": prompt, "temperature": temperature,
                    "stop": stop, "max_tokens": max_tokens}
         try:
             response = self._client.post("completions", json=payload)
@@ -101,12 +104,12 @@ class ChatClient:
             raise LLMError(f"cannot reach the model server at {self._client.base_url}: {error}") from error
 
     def stream_complete(self, messages: list[dict], model: str, temperature: float) -> Iterator[str]:
-        payload = {"model": model, "messages": messages, "temperature": temperature}
+        payload = {**self.sampling, "model": model, "messages": messages, "temperature": temperature}
         return self._stream("chat/completions", payload, lambda choice: (choice.get("delta") or {}).get("content"))
 
     def stream_continue(self, prompt: str, model: str, temperature: float, stop: list[str],
                         max_tokens: int = 200) -> Iterator[str]:
-        payload = {"model": model, "prompt": prompt, "temperature": temperature, "stop": stop,
+        payload = {**self.sampling, "model": model, "prompt": prompt, "temperature": temperature, "stop": stop,
                    "max_tokens": max_tokens}
         return self._stream("completions", payload, lambda choice: choice.get("text"))
 

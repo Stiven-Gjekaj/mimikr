@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mimikr.config import Config, app_home, config_file, embedding_base_url, load_config, save_config
+from mimikr.config import Config, app_home, sampling, config_file, embedding_base_url, load_config, save_config
 
 
 def test_uses_the_defaults_when_nothing_is_set(tmp_path):
@@ -118,3 +118,8 @@ def test_save_makes_the_directory_of_the_file(tmp_path):
     path = tmp_path / "new" / "mimikr.toml"
     save_config(Config(), path)
     assert path.is_file()
+
+
+def test_sampling_sends_only_the_penalties_that_are_set():
+    assert sampling(Config()) == {}
+    assert sampling(Config(frequency_penalty=0.4)) == {"frequency_penalty": 0.4}

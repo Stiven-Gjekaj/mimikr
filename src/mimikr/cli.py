@@ -16,7 +16,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-from mimikr.config import Config, embedding_base_url, load_config
+from mimikr.config import Config, embedding_base_url, load_config, sampling
 from mimikr.evaluate import STYLE_FEATURES, EvaluationError, Report, run_evaluation
 from mimikr.identity import list_identities
 from mimikr.importers import READERS, ExportError, write_transcript
@@ -80,7 +80,7 @@ def evaluate(config: Config, name: str, cases: int | None, model: str | None, me
         print(f"mimikr: {errors.get(name) or f'no identity is named {name!r}'}", file=sys.stderr)
         return 1
     identity = identities[name]
-    client = client or ChatClient(config.base_url, config.api_key)
+    client = client or ChatClient(config.base_url, config.api_key, sampling=sampling(config))
     if embed_client is None:
         embed_url = embedding_base_url(config)
         embed_client = client if embed_url == config.base_url else ChatClient(embed_url, config.api_key)

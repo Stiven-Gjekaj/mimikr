@@ -157,3 +157,20 @@ def test_an_emoji_costs_more_than_a_letter():
     assert clip_for_embedding("a" * 3000, budget=100) == "a" * 300
     assert clip_for_embedding("😭" * 100, budget=30) == "😭" * 10
     assert clip_for_embedding("short text") == "short text"
+
+
+def test_the_sampling_options_go_with_each_request_for_text_and_not_with_embeddings():
+    bodies = []
+
+    def handler(request):
+        bodies.append(json.loads(request.content))
+        if request.url.path.endswith("/embeddings"):
+            return httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0]}]})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "x"}, "text": "x"}]})
+
+    client = ChatClient("http://model.test/v1", "k", transport=httpx.MockTransport(handler),
+                        sampling={"frequency_penalty": 0.5})
+    client.complete([], model="m", temperature=0.5)
+    client.continue_text("p", model="m", temperature=0.5, stop=[])
+    client.embed(["t"], model="e")
+    assert [body.get("frequency_penalty") for body in bodies] == [0.5, 0.5, None]

@@ -28,6 +28,10 @@ class Config:
     api_key: str = "local"
     model: str = "llama3.1"
     temperature: float = 0.8
+    # Penalties for words that the reply already has. They make the model repeat
+    # itself less. Each is a standard option of the OpenAI API, from -2 to 2.
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
     # The maximum number of characters of the room that go to the model. Older
     # messages stay in the room, but the model does not see them.
     history_budget: int = 12000
@@ -145,3 +149,9 @@ def save_config(config: Config, path: Path = Path("mimikr.toml")) -> None:
     temporary = path.with_suffix(".tmp")
     temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     temporary.replace(path)
+
+
+def sampling(config: Config) -> dict:
+    """Return the options of the settings that go with each request for text."""
+    options = {"frequency_penalty": config.frequency_penalty, "presence_penalty": config.presence_penalty}
+    return {key: value for key, value in options.items() if value}

@@ -54,7 +54,7 @@ from PySide6.QtWidgets import (
 
 from mimikr import theme
 from mimikr.avatars import AvatarStore
-from mimikr.config import Config, config_file, embedding_base_url, save_config
+from mimikr.config import Config, config_file, embedding_base_url, sampling, save_config
 from mimikr import editing
 from mimikr.engine import EngineError, RoomEngine
 from mimikr.identity import IdentityError, load_identity
@@ -1741,7 +1741,7 @@ class MainWindow(QMainWindow):
 def run(config: Config) -> int:
     application = QApplication.instance() or QApplication(sys.argv)
     application.setApplicationName("mimikr")
-    chat = ChatClient(config.base_url, config.api_key)
+    chat = ChatClient(config.base_url, config.api_key, sampling=sampling(config))
     embedding_client = ChatClient(embedding_base_url(config), config.api_key)
 
     def embed(texts: list[str]) -> list[list[float]]:
@@ -1751,7 +1751,7 @@ def run(config: Config) -> int:
 
     def reconnect(new: Config) -> None:
         nonlocal embedding_client
-        engine.completer = ChatClient(new.base_url, new.api_key)
+        engine.completer = ChatClient(new.base_url, new.api_key, sampling=sampling(new))
         embedding_client = ChatClient(embedding_base_url(new), new.api_key)
 
     window = MainWindow(engine, reconnect=reconnect)
