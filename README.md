@@ -139,8 +139,10 @@ llama-server -m ~/Models/nomic-embed-text-v1.5.Q8_0.gguf --embeddings --port 808
 ```
 
 `-c 8192` matters. With no `-c`, llama-server takes the context of the model
-file, which is 128k tokens for Mistral Nemo, and the memory for that context is
-more than a Mac with 16 GB has. mimikr sends about 3000 tokens of the room.
+file. The Mistral Nemo file above says 1,024,000 tokens. Its cache takes 160 KB
+for each token (40 layers, 8 key and value heads of 128 values, 16 bits), so
+that context needs about 156 GiB. A context of 8192 tokens needs 1.25 GiB.
+mimikr sends about 3000 tokens of the room.
 
 The settings page can also start both servers for you. See
 [Settings](#settings).
