@@ -54,3 +54,8 @@ def test_speakers_keeps_the_order_of_the_first_message():
 def test_a_turn_is_a_run_of_messages_from_the_speaker():
     messages = parse_transcript("Ana: a\nAna: b\nBo: c\nAna: d")
     assert turn_starts(messages, "Ana") == [0, 3]
+
+
+def test_an_indented_line_that_starts_with_a_hash_continues_the_message():
+    [message] = parse_transcript("Ana: my list\n  # first item")
+    assert message.text == "my list\n# first item"

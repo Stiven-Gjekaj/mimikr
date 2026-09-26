@@ -6,6 +6,7 @@ The rules:
 - A line can start with a time in brackets: `[2024-05-01 21:14] Name: text`.
 - A line that starts with a space or a tab continues the previous message.
 - A line that starts with `#` is a comment. The reader ignores it.
+  An indented line that starts with `#` continues a message.
 - The reader ignores empty lines.
 - A colon must have a space or the end of the line after it.
   Thus `https://example.com` does not start a message.
@@ -33,7 +34,7 @@ class TranscriptError(ValueError):
 def parse_transcript(source: str) -> list[Message]:
     messages: list[Message] = []
     for number, line in enumerate(source.splitlines(), start=1):
-        if not line.strip() or line.lstrip().startswith("#"):
+        if not line.strip() or line.startswith("#"):
             continue
         if line[0] in " \t":
             if not messages:
