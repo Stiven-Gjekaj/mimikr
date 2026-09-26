@@ -10,8 +10,10 @@ This file says in what order to build it.
 Each phase has a goal, the work in it, and an exit test.
 The sizes are relative: S is a day or two, M is a week, and L is longer.
 
-P1 is done. P2 is built, and its exit test passes with a fake model and a fake
-embedding model. No real model has run it yet.
+The code of each phase is built, and each exit test passes with a fake model.
+P4 is open: it needs the real models and a real transcript. The exit tests of
+P3 and of the continuation mode also wait for P4, because only a real model
+can say if they make the replies better.
 
 ---
 
@@ -65,7 +67,7 @@ for style and 1 for meaning. One long, formal reply scores below 0.6 for style,
 and below the baseline for meaning. Two more tests prove that the model never sees
 the reply that it must write.
 
-## P3: similar examples (M)
+## P3: similar examples (built)
 
 **Goal:** the examples in the prompt match the current message.
 
@@ -75,33 +77,57 @@ the reply that it must write.
 
 **Exit test:** the P2 score is better than with the most recent examples.
 
-## P4: the choice of model (S)
+The code is built: `examples = "similar"` in rooms, and `--examples similar` in
+`mimikr eval`. The tests prove that the index holds the training part only,
+and that the prompt holds the exchange that matches the question. The exit
+test itself runs in P4.
 
-**Goal:** a default model that the P2 score chose.
+## P4: the choice of model and of the mode (open)
 
-- Run the P2 score on three identities with each candidate model.
-- Record the scores and the choice in [the milestones](milestones.md).
+**Goal:** a default model, mode and choice of examples that the P2 score chose.
 
-**Exit test:** the milestones hold the table of scores.
+- Get a real transcript of 50 turns or more.
+- Run `mimikr eval` for each candidate, in the chat mode:
+  Mistral Nemo 12B Instruct, Llama 3.1 8B Instruct, and Qwen3 8B.
+- Run it in the continuation mode with a base model, such as Mistral Nemo 12B
+  Base.
+- Run the best one with `--examples similar`.
+- Run each score two times, because the model writes different replies each
+  time.
+- Record the table of `mimikr scores` and the choice in
+  [the milestones](milestones.md).
 
-## P5: importers (M)
+`mimikr scores` is built. It puts each saved report in one table.
+
+**Exit test:** the milestones hold the table of scores, and the defaults match
+the winner.
+
+## P5: importers (built)
 
 **Goal:** read the export of a chat application.
 
-- WhatsApp, Telegram, Discord, and iMessage.
+- WhatsApp, Telegram Desktop, and DiscordChatExporter.
 - Each importer writes `Name: message` lines.
+- iMessage is not in scope. [The milestones](milestones.md) say why.
 
 **Exit test:** each importer reads an invented export and writes the expected
-lines.
+lines. `tests/test_importers.py` does this, and reads each result back through
+the transcript reader.
 
-## P6: live replies (S)
+## P6: live replies (built)
 
 **Goal:** the reply shows while the model writes it.
 
 **Exit test:** the first words show before the model ends its reply.
 
-## P7: automatic rooms (S)
+`tests/test_gui.py` streams "say" and then " less". The window shows "say"
+before the reply ends, and then one message "say less" with no grey bubble.
+
+## P7: automatic rooms (built)
 
 **Goal:** the identities talk for a number of turns with no click.
 
 **Exit test:** a room runs ten turns and stops. The user can stop it early.
+
+`tests/test_gui.py` runs ten turns, stops after the third, and stops in the
+middle of a reply. The stopped reply leaves no message.
