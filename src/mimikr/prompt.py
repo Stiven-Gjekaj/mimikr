@@ -2,6 +2,7 @@
 
 import re
 
+from mimikr.examples import Exchange
 from mimikr.identity import Identity
 from mimikr.rooms import Room
 from mimikr.transcript import Message
@@ -23,7 +24,23 @@ def select_examples(identity: Identity, budget: int = EXAMPLE_BUDGET) -> list[Me
     return list(reversed(selected))
 
 
-def system_prompt(identity: Identity, room: Room, names: dict[str, str]) -> str:
+def format_examples(identity: Identity, exchanges: list[Exchange] | None) -> str:
+    """Write the examples as transcript lines.
+
+    With no exchanges, use the most recent part of the transcript.
+    Separate exchanges with a line of three dots, because each is a different
+    moment of the conversation.
+    """
+    if exchanges:
+        return "\n...\n".join(
+            "\n".join(f"{message.speaker}: {message.text}" for message in exchange.messages)
+            for exchange in exchanges
+        )
+    return "\n".join(f"{message.speaker}: {message.text}" for message in select_examples(identity))
+
+
+def system_prompt(identity: Identity, room: Room, names: dict[str, str],
+                  exchanges: list[Exchange] | None = None) -> str:
     name = identity.display_name
     others = [names.get(member, member) for member in room.members if member != identity.id]
     people = ", ".join(["the user", *others])
@@ -36,9 +53,8 @@ def system_prompt(identity: Identity, room: Room, names: dict[str, str]) -> str:
     style = identity.style.describe()
     if style:
         parts.append(f"## How {name} writes\n\n" + "\n".join(f"- {line}" for line in style))
-    examples = select_examples(identity)
-    if examples:
-        transcript = "\n".join(f"{message.speaker}: {message.text}" for message in examples)
+    transcript = format_examples(identity, exchanges)
+    if transcript:
         parts.append(
             f"## Real messages from {name}\n\n"
             f"In this transcript, {name} is '{identity.speaker}'. Copy the tone and the style."
@@ -47,7 +63,8 @@ def system_prompt(identity: Identity, room: Room, names: dict[str, str]) -> str:
     return "\n\n".join(parts)
 
 
-def build_messages(identity: Identity, room: Room, names: dict[str, str]) -> list[dict]:
+def build_messages(identity: Identity, room: Room, names: dict[str, str],
+                   exchanges: list[Exchange] | None = None) -> list[dict]:
     """Return the chat messages for an OpenAI-compatible API.
 
     The messages of the identity become 'assistant' messages.
@@ -73,7 +90,7 @@ def build_messages(identity: Identity, room: Room, names: dict[str, str]) -> lis
     if turns[-1]["role"] == "assistant":
         turns.append({"role": "user", "content": "(Nobody answers. Write your next message.)"})
 
-    return [{"role": "system", "content": system_prompt(identity, room, names)}, *turns]
+    return [{"role": "system", "content": system_prompt(identity, room, names, exchanges)}, *turns]
 
 
 def split_reply(identity: Identity, reply: str) -> list[str]:

@@ -1,3 +1,4 @@
+from mimikr.examples import Exchange
 from mimikr.identity import Identity
 from mimikr.prompt import build_messages, select_examples, split_reply
 from mimikr.rooms import USER, Room, RoomMessage
@@ -71,3 +72,20 @@ def test_split_reply_makes_many_messages_for_a_person_who_writes_in_bursts():
     identity = ana()
     identity.style = StyleProfile(message_count=10, messages_per_turn=3.0)
     assert split_reply(identity, "one\n\nAna: two\nthree") == ["one", "two", "three"]
+
+
+def test_the_chosen_exchanges_replace_the_recent_examples():
+    transcript = [Message("Bo", "recent question"), Message("Ana", "recent answer")]
+    exchanges = [
+        Exchange([Message("Bo", "noodles?"), Message("Ana", "yes")], "noodles?"),
+        Exchange([Message("Bo", "noodles again?"), Message("Ana", "always")], "noodles again?"),
+    ]
+    system = build_messages(ana(transcript), Room("r", ["ana"]), NAMES, exchanges)[0]["content"]
+    assert "Bo: noodles?\nAna: yes\n...\nBo: noodles again?\nAna: always" in system
+    assert "recent answer" not in system
+
+
+def test_no_exchanges_means_the_recent_examples():
+    transcript = [Message("Bo", "recent question"), Message("Ana", "recent answer")]
+    system = build_messages(ana(transcript), Room("r", ["ana"]), NAMES, [])[0]["content"]
+    assert "Bo: recent question\nAna: recent answer" in system
