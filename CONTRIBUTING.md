@@ -77,7 +77,10 @@ file.
 - Write a file outside `data_dir`.
 - Write identity data to a log.
 - Show a reply as if the real person wrote it.
-- Change the files of an identity. The Software reads them only.
+- Change the files of an identity with no action of the user. Only a save in
+  the identity editor, or an import into an identity, writes them.
+- Start a program that no setting names, or a server that listens on an
+  address other than 127.0.0.1.
 
 ## Coding style
 

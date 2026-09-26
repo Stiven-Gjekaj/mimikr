@@ -42,9 +42,14 @@ The default address is on the same computer.
 A request to any other host is a vulnerability.
 
 **The files stay in their directories.**
-The Software reads identities from `identities_dir`, and it writes rooms into
-`data_dir`.
-It writes no other file.
+The Software reads identities from `identities_dir`, and it writes rooms,
+pictures and logs into `data_dir`. It writes into `identities_dir` only when the
+user saves in the identity editor or imports a chat. It writes `mimikr.toml`
+when the user saves the settings, and an export where the user chooses.
+
+**The Software can start llama-server.**
+It starts the program in the setting `llama_server`, or the llama-server that
+the system finds, and it tells each server to listen on 127.0.0.1 only.
 
 **The transcript is untrusted text.**
 A transcript can hold text that tells the model to do something.
@@ -61,6 +66,9 @@ The model has no tools, so that text can change only the reply.
   Software, or that makes it run code.
 - A change to `.gitignore` or to the defaults that puts identity data into the
   repository.
+- A way to make the Software start a program that no setting names.
+- A server that the Software starts, and that listens on an address other than
+  127.0.0.1.
 
 **These are out of scope:**
 
@@ -69,4 +77,6 @@ The model has no tools, so that text can change only the reply.
 - Data that goes to a remote model server that the user set in `base_url`.
 - A person with access to the user account who reads the files. The Software
   does not encrypt them.
+- A program that the user names in the setting `llama_server`. The Software
+  runs the program that the user chose.
 - Findings from an automated scanner with no working demonstration.
