@@ -72,7 +72,9 @@ class LocalServer:
 
     def ready(self) -> bool:
         try:
-            return httpx.get(f"http://127.0.0.1:{self.port}/health", timeout=1.0).status_code == 200
+            # trust_env=False: the server is on this computer, so no proxy of the
+            # system or of the environment may take the request.
+            return httpx.get(f"http://127.0.0.1:{self.port}/health", timeout=1.0, trust_env=False).status_code == 200
         except httpx.HTTPError:
             return False
 
@@ -85,7 +87,8 @@ class LocalServer:
             if self.ready():
                 return
             time.sleep(0.25)
-        raise ServerError(f"the {self.name} server did not answer in {timeout:.0f} seconds. Read {self.log_path}")
+        raise ServerError(f"the {self.name} server did not answer in {timeout:.0f} seconds. "
+                          f"Read {self.log_path}: {self.last_log_line()}")
 
     def last_log_line(self) -> str:
         try:
