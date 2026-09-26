@@ -17,6 +17,10 @@ class FakeModel:
         self.requests.append({"messages": messages, "model": model, "temperature": temperature})
         return self.reply
 
+    def continue_text(self, prompt, model, temperature, stop):
+        self.requests.append({"prompt": prompt, "stop": stop, "model": model})
+        return self.reply
+
 
 def make_engine(tmp_path, model: FakeModel, people=("ana", "bo")) -> RoomEngine:
     for person in people:
@@ -114,3 +118,30 @@ def test_an_unknown_examples_setting_is_an_error(tmp_path):
     room = engine.create_room("r", ["ana"])
     with pytest.raises(EngineError, match="'recent' or 'similar'"):
         engine.speak(room, "ana")
+
+
+def test_the_continue_mode_sends_a_chat_log(tmp_path):
+    model = FakeModel(reply=" sure\nana: why not\nYou: ok")
+    engine = make_engine(tmp_path, model, people=("ana",))
+    engine.config.mode = "continue"
+    room = engine.create_room("r", ["ana"])
+    engine.post_user_message(room, "lunch?")
+    new = engine.speak(room, "ana")
+    assert model.requests[0]["prompt"].endswith("You: lunch?\nana:")
+    assert "\nYou:" in model.requests[0]["stop"]
+    assert [m.text for m in new] == ["sure", "why not"]
+
+
+def test_the_mode_of_the_identity_has_priority(tmp_path):
+    model = FakeModel()
+    engine = make_engine(tmp_path, model, people=("ana",))
+    (tmp_path / "identities" / "ana" / "identity.toml").write_text('mode = "continue"\n')
+    engine.speak(engine.create_room("r", ["ana"]), "ana")
+    assert "prompt" in model.requests[0]
+
+
+def test_an_unknown_mode_is_an_error(tmp_path):
+    engine = make_engine(tmp_path, FakeModel(), people=("ana",))
+    engine.config.mode = "poetry"
+    with pytest.raises(EngineError, match="'chat' or 'continue'"):
+        engine.speak(engine.create_room("r", ["ana"]), "ana")

@@ -3,18 +3,12 @@
 The engine does not know about the GUI. The GUI calls it from a worker thread.
 """
 
-from typing import Protocol
-
 from mimikr import prompt
 from mimikr.config import Config
 from mimikr.examples import Embedder, Exchange, ExampleIndex, recent_query
 from mimikr.identity import Identity, list_identities
-from mimikr.prompt import build_messages, split_reply
 from mimikr.rooms import USER, Room, RoomMessage, RoomStore
-
-
-class Completer(Protocol):
-    def complete(self, messages: list[dict], model: str, temperature: float) -> str: ...
+from mimikr.writer import Completer, ModeError, write_reply
 
 
 class EngineError(RuntimeError):
@@ -73,13 +67,16 @@ class RoomEngine:
         if identity is None:
             raise EngineError(errors.get(member) or f"the identity {member!r} does not exist")
         names = {USER: "You"} | {key: value.display_name for key, value in known.items()}
-        reply = self.completer.complete(
-            build_messages(identity, room, names, self.choose_exchanges(identity, room)),
-            model=identity.model or self.config.model,
-            temperature=identity.temperature if identity.temperature is not None else self.config.temperature,
-        )
-        new = [RoomMessage(author=member, name=identity.display_name, text=text)
-               for text in split_reply(identity, reply)]
+        try:
+            texts = write_reply(
+                identity, room, names, self.choose_exchanges(identity, room), self.completer,
+                model=identity.model or self.config.model,
+                temperature=identity.temperature if identity.temperature is not None else self.config.temperature,
+                mode=identity.mode or self.config.mode,
+            )
+        except ModeError as error:
+            raise EngineError(str(error)) from None
+        new = [RoomMessage(author=member, name=identity.display_name, text=text) for text in texts]
         room.messages.extend(new)
         self.store.save(room)
         return new
