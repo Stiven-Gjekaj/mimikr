@@ -78,6 +78,7 @@ class RoomEngine:
                 temperature=identity.temperature if identity.temperature is not None else self.config.temperature,
                 mode=identity.mode or self.config.mode,
                 on_text=on_text,
+                history_budget=self.config.history_budget,
             )
         except ModeError as error:
             raise EngineError(str(error)) from None

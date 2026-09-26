@@ -10,7 +10,7 @@ from typing import Protocol
 from mimikr.continuation import build_continuation, other_names, split_continuation
 from mimikr.examples import Exchange
 from mimikr.identity import Identity
-from mimikr.prompt import build_messages, split_reply
+from mimikr.prompt import HISTORY_BUDGET, build_messages, split_reply
 from mimikr.rooms import Room
 
 MODES = ("chat", "continue")
@@ -37,14 +37,14 @@ def collect(pieces: Iterable[str], split: Callable[[str], list[str]], on_text: C
 
 def write_reply(identity: Identity, room: Room, names: dict[str, str], exchanges: list[Exchange] | None,
                 completer: Completer, model: str, temperature: float, mode: str,
-                on_text: Callable[[str], None] | None = None) -> list[str]:
+                on_text: Callable[[str], None] | None = None, history_budget: int = HISTORY_BUDGET) -> list[str]:
     """Return the new messages of the identity.
 
     With on_text, and a completer that can stream, the function calls on_text
     with the text so far while the model writes.
     """
     if mode == "chat":
-        messages = build_messages(identity, room, names, exchanges)
+        messages = build_messages(identity, room, names, exchanges, history_budget)
 
         def split(reply: str) -> list[str]:
             return split_reply(identity, reply)
@@ -55,7 +55,7 @@ def write_reply(identity: Identity, room: Room, names: dict[str, str], exchanges
             reply = completer.complete(messages, model=model, temperature=temperature)
         return split(reply)
     if mode == "continue":
-        text, stop = build_continuation(identity, room, names, exchanges)
+        text, stop = build_continuation(identity, room, names, exchanges, history_budget)
         others = other_names(identity, room, names, exchanges)
 
         def split(reply: str) -> list[str]:

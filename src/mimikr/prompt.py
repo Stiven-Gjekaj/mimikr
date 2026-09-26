@@ -9,6 +9,27 @@ from mimikr.transcript import Message
 
 # The maximum number of characters of real transcript in the prompt.
 EXAMPLE_BUDGET = 6000
+# The maximum number of characters of the room in the prompt. About four
+# characters make one token, so this is about 3000 tokens. With the examples and
+# the reply, the prompt fits a context of 8192 tokens.
+HISTORY_BUDGET = 12000
+EARLIER = "(Earlier messages are not shown.)"
+
+
+def recent_messages(messages: list, budget: int = HISTORY_BUDGET) -> tuple[list, bool]:
+    """Return the most recent messages that fit the budget, and whether older ones were left out.
+
+    The last message is always in the result, even if it is longer than the budget.
+    """
+    kept: list = []
+    used = 0
+    for message in reversed(messages):
+        cost = len(message.name) + len(message.text) + 3
+        if kept and used + cost > budget:
+            return list(reversed(kept)), True
+        kept.append(message)
+        used += cost
+    return list(reversed(kept)), False
 
 
 def select_examples(identity: Identity, budget: int = EXAMPLE_BUDGET) -> list[Message]:
@@ -64,16 +85,18 @@ def system_prompt(identity: Identity, room: Room, names: dict[str, str],
 
 
 def build_messages(identity: Identity, room: Room, names: dict[str, str],
-                   exchanges: list[Exchange] | None = None) -> list[dict]:
+                   exchanges: list[Exchange] | None = None, history_budget: int = HISTORY_BUDGET) -> list[dict]:
     """Return the chat messages for an OpenAI-compatible API.
 
     The messages of the identity become 'assistant' messages.
     The messages of all other members become 'user' messages with the name first.
     The function joins messages with the same role, because some local models
     need the roles to alternate.
+    Only the recent messages that fit the history budget go to the model.
     """
-    turns: list[dict] = []
-    for message in room.messages:
+    messages, trimmed = recent_messages(room.messages, history_budget)
+    turns: list[dict] = [{"role": "user", "content": EARLIER}] if trimmed else []
+    for message in messages:
         if message.author == identity.id:
             role, text = "assistant", message.text
         else:

@@ -10,7 +10,7 @@ import re
 
 from mimikr.examples import Exchange
 from mimikr.identity import Identity
-from mimikr.prompt import format_examples
+from mimikr.prompt import EARLIER, HISTORY_BUDGET, format_examples, recent_messages
 from mimikr.rooms import Room
 
 
@@ -30,13 +30,15 @@ def other_names(identity: Identity, room: Room, names: dict[str, str], exchanges
 
 
 def build_continuation(identity: Identity, room: Room, names: dict[str, str],
-                       exchanges: list[Exchange] | None = None) -> tuple[str, list[str]]:
+                       exchanges: list[Exchange] | None = None,
+                       history_budget: int = HISTORY_BUDGET) -> tuple[str, list[str]]:
     """Return the text for the model to continue, and the stop sequences."""
     me = speaker_name(identity)
     parts = [f"The chat log of {me}.", f"About {me}: " + " ".join(identity.personality.split())]
     examples = format_examples(identity, exchanges)
-    lines = []
-    for message in room.messages:
+    messages, trimmed = recent_messages(room.messages, history_budget)
+    lines = [EARLIER] if trimmed else []
+    for message in messages:
         who = me if message.author == identity.id else message.name
         lines += [f"{who}: {line}" for line in message.text.splitlines() if line.strip()]
     log = "\n".join([*([examples, "..."] if examples else []), *lines, f"{me}:"])

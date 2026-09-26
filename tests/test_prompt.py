@@ -1,6 +1,6 @@
 from mimikr.examples import Exchange
 from mimikr.identity import Identity
-from mimikr.prompt import build_messages, select_examples, split_reply
+from mimikr.prompt import EARLIER, build_messages, recent_messages, select_examples, split_reply
 from mimikr.rooms import USER, Room, RoomMessage
 from mimikr.style import StyleProfile, build_profile
 from mimikr.transcript import Message
@@ -89,3 +89,27 @@ def test_no_exchanges_means_the_recent_examples():
     transcript = [Message("Bo", "recent question"), Message("Ana", "recent answer")]
     system = build_messages(ana(transcript), Room("r", ["ana"]), NAMES, [])[0]["content"]
     assert "Bo: recent question\nAna: recent answer" in system
+
+
+def test_a_long_room_sends_only_the_recent_messages():
+    room = Room("r", ["ana"])
+    room.messages += [say(USER, f"message number {n}") for n in range(2000)]
+    turns = build_messages(ana(), room, NAMES, history_budget=500)[1:]
+    sent = "\n".join(turn["content"] for turn in turns)
+    assert turns[0]["content"].startswith(EARLIER)
+    assert "message number 1999" in sent and "message number 1000" not in sent
+    assert len(sent) < 600
+
+
+def test_a_short_room_sends_everything_with_no_note():
+    room = Room("r", ["ana"])
+    room.messages += [say(USER, "hi"), say("ana", "hey")]
+    turns = build_messages(ana(), room, NAMES)[1:]
+    assert EARLIER not in turns[0]["content"]
+
+
+def test_the_last_message_goes_even_if_it_is_longer_than_the_budget():
+    room = Room("r", ["ana"])
+    room.messages += [say(USER, "old"), say(USER, "x" * 100)]
+    kept, trimmed = recent_messages(room.messages, budget=10)
+    assert [m.text for m in kept] == ["x" * 100] and trimmed

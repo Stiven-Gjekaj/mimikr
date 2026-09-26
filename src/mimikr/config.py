@@ -21,6 +21,9 @@ class Config:
     api_key: str = "local"
     model: str = "llama3.1"
     temperature: float = 0.8
+    # The maximum number of characters of the room that go to the model. Older
+    # messages stay in the room, but the model does not see them.
+    history_budget: int = 12000
     # How the model writes: "chat" sends chat messages to an instruct model, and
     # "continue" gives a chat log to a base model to continue.
     mode: str = "chat"

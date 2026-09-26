@@ -62,3 +62,11 @@ def test_a_colon_in_a_line_of_the_person_is_not_a_speaker():
 
 def test_an_empty_first_line_takes_the_next_line():
     assert split_continuation(sam(), "\nok then", ["June"]) == ["ok then"]
+
+
+def test_a_long_room_gives_only_the_recent_lines_to_the_model():
+    room = Room("r", ["sam"])
+    room.messages += [say(USER, "You", f"line {n}") for n in range(1000)]
+    text, _ = build_continuation(sam(), room, NAMES, history_budget=200)
+    assert "(Earlier messages are not shown.)\nYou: line 9" in text
+    assert "You: line 999\nSam:" in text and "You: line 500\n" not in text

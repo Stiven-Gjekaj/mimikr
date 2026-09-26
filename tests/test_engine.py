@@ -177,3 +177,15 @@ def test_a_model_that_cannot_stream_still_replies(tmp_path):
     seen = []
     assert [m.text for m in engine.speak(engine.create_room("r", ["ana"]), "ana", on_text=seen.append)] == ["hey"]
     assert seen == []
+
+
+def test_the_engine_uses_the_history_budget_of_the_settings(tmp_path):
+    model = FakeModel()
+    engine = make_engine(tmp_path, model, people=("ana",))
+    engine.config.history_budget = 100
+    room = engine.create_room("r", ["ana"])
+    for n in range(50):
+        engine.post_user_message(room, f"message {n}")
+    engine.speak(room, "ana")
+    sent = "\n".join(m["content"] for m in model.requests[0]["messages"][1:])
+    assert "message 49" in sent and "message 0\n" not in sent
