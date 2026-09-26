@@ -4,7 +4,6 @@ import pytest
 
 from mimikr.evaluate import (
     EvaluationError,
-    cosine,
     feature_difference,
     score_meaning,
     score_style,
@@ -119,7 +118,3 @@ def test_an_empty_reply_scores_zero_and_is_not_embedded():
     assert result.score == pytest.approx(2 / 3)
     assert "" not in embedder.calls[0]
     assert len(embedder.calls) == 1
-
-
-def test_the_cosine_of_a_zero_vector_is_zero():
-    assert cosine([0.0, 0.0], [1.0, 0.0]) == 0.0

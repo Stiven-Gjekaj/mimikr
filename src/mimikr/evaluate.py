@@ -8,7 +8,6 @@ The identity that the model uses knows only the part of the transcript before
 the first test turn. Thus the model cannot copy a real reply from its prompt.
 """
 
-import math
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from typing import Protocol
@@ -18,6 +17,7 @@ from mimikr.prompt import build_messages, split_reply
 from mimikr.rooms import Room, RoomMessage
 from mimikr.style import StyleProfile, build_profile
 from mimikr.transcript import Message, turn_starts
+from mimikr.vectors import cosine
 
 # The maximum number of messages before a test turn that the model sees.
 CONTEXT_SIZE = 20
@@ -119,11 +119,6 @@ class MeaningScore:
     # case. A score near the baseline means that the replies match the person
     # no better than a random reply of that person does.
     baseline: float | None
-
-
-def cosine(a: list[float], b: list[float]) -> float:
-    length = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
-    return sum(x * y for x, y in zip(a, b)) / length if length else 0.0
 
 
 def score_meaning(real_turns: list[list[str]], generated_turns: list[list[str]], embed: Embedder) -> MeaningScore:
