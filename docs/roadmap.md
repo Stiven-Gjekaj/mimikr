@@ -160,3 +160,18 @@ These came after the plan of P1 to P7. Each is built and has tests.
 Still open:
 
 
+
+---
+
+## After 1.0 (built)
+
+- Less repetition: avoid repeats, emoji at the habit of the person, the
+  penalties, and a measure of repeats in `mimikr eval`.
+- The topic of a room, and the lore of the group.
+- Replies to a message.
+- Builds for Windows and Linux in the release, each with a smoke test.
+
+Still open:
+
+- A score of the penalties, to choose their default.
+- The first run of the release on Windows and Linux.
