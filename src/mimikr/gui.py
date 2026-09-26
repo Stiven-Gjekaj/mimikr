@@ -43,6 +43,8 @@ class Bridge(QObject):
 
     message = Signal(str, object)
     typing = Signal(str, str)
+    # The room, the author, the name and the text so far of a reply that the model still writes.
+    partial = Signal(str, str, str, str)
     failed = Signal(str, str)
     idle = Signal(str)
 
@@ -110,34 +112,35 @@ class MessageView(QScrollArea):
         self.column.addStretch(1)
         self.setWidget(body)
         self.last_author: str | None = None
+        self.draft: tuple[QWidget, QLabel] | None = None
         bar = self.verticalScrollBar()
         bar.rangeChanged.connect(lambda _minimum, maximum: bar.setValue(maximum))
 
     def clear(self) -> None:
+        self.draft = None
         while self.column.count() > 1:
             widget = self.column.takeAt(1).widget()
             if widget is not None:
                 widget.deleteLater()
         self.last_author = None
 
-    def add(self, message: RoomMessage) -> None:
-        mine = message.author == USER
-        if not mine and message.author != self.last_author:
-            name = QLabel(message.name, objectName="name")
-            self.column.addWidget(name)
-        self.last_author = message.author
+    @staticmethod
+    def fit(bubble: QLabel, text: str) -> None:
+        """Set the text. A label that wraps asks for a small width, so give it the width that its text needs."""
+        bubble.setText(text)
+        padding = 30
+        needed = bubble.fontMetrics().boundingRect(
+            0, 0, BUBBLE_WIDTH - padding, 0, Qt.TextFlag.TextWordWrap, text
+        ).width()
+        bubble.setMinimumWidth(min(BUBBLE_WIDTH, needed + padding))
 
-        bubble = QLabel(message.text, objectName="mine" if mine else "bubble")
+    def bubble_row(self, text: str, kind: str, mine: bool) -> tuple[QWidget, QLabel]:
+        bubble = QLabel(objectName=kind)
         bubble.setWordWrap(True)
         bubble.setMaximumWidth(BUBBLE_WIDTH)
         bubble.setTextFormat(Qt.TextFormat.PlainText)
         bubble.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        # A label that wraps asks for a small width. Give it the width that its text needs.
-        padding = 30
-        needed = bubble.fontMetrics().boundingRect(
-            0, 0, BUBBLE_WIDTH - padding, 0, Qt.TextFlag.TextWordWrap, message.text
-        ).width()
-        bubble.setMinimumWidth(min(BUBBLE_WIDTH, needed + padding))
+        self.fit(bubble, text)
         row = QWidget()
         line = QHBoxLayout(row)
         line.setContentsMargins(0, 0, 0, 0)
@@ -146,7 +149,42 @@ class MessageView(QScrollArea):
         line.addWidget(bubble)
         if not mine:
             line.addStretch(1)
+        return row, bubble
+
+    def add(self, message: RoomMessage) -> None:
+        self.clear_draft()
+        mine = message.author == USER
+        if not mine and message.author != self.last_author:
+            self.column.addWidget(QLabel(message.name, objectName="name"))
+        self.last_author = message.author
+        row, _ = self.bubble_row(message.text, "mine" if mine else "bubble", mine)
         self.column.addWidget(row)
+
+    def show_draft(self, author: str, name: str, text: str) -> None:
+        """Show the reply that the model still writes, in one bubble that grows."""
+        if self.draft is None:
+            box = QWidget()
+            layout = QVBoxLayout(box)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(4)
+            if author != self.last_author:
+                layout.addWidget(QLabel(name, objectName="name"))
+            row, bubble = self.bubble_row(text, "draft", mine=False)
+            layout.addWidget(row)
+            self.column.addWidget(box)
+            self.draft = (box, bubble)
+        else:
+            self.fit(self.draft[1], text)
+        self.draft[1].setVisible(bool(text))
+
+    def clear_draft(self) -> None:
+        if self.draft is not None:
+            self.column.removeWidget(self.draft[0])
+            self.draft[0].deleteLater()
+            self.draft = None
+
+    def draft_text(self) -> str | None:
+        return None if self.draft is None else self.draft[1].text()
 
     def texts(self) -> list[str]:
         return [label.text() for label in self.findChildren(QLabel) if label.objectName() in ("mine", "bubble")]
@@ -161,6 +199,7 @@ class MainWindow(QMainWindow):
         self.bridge = Bridge()
         self.bridge.message.connect(self.on_message)
         self.bridge.typing.connect(self.on_typing)
+        self.bridge.partial.connect(self.on_partial)
         self.bridge.failed.connect(self.on_failed)
         self.bridge.idle.connect(self.on_idle)
 
@@ -254,6 +293,7 @@ class MainWindow(QMainWindow):
         muted = palette.color(QPalette.ColorRole.PlaceholderText).name()
         self.setStyleSheet(f"""
             QLabel#bubble {{ background: {bubble}; border-radius: 12px; padding: 7px 11px; }}
+            QLabel#draft {{ background: {bubble}; border-radius: 12px; padding: 7px 11px; color: {muted}; }}
             QLabel#mine {{ background: {accent}; color: {accent_text}; border-radius: 12px; padding: 7px 11px; }}
             QLabel#name, QLabel#subtitle, QLabel#status {{ color: {muted}; font-size: 12px; }}
             QLabel#name {{ margin: 6px 4px 0 4px; }}
@@ -365,7 +405,10 @@ class MainWindow(QMainWindow):
                     identities, _ = self.engine.identities()
                     name = identities[member].display_name if member in identities else member
                     self.bridge.typing.emit(room.id, name)
-                    for message in self.engine.speak(room, member):
+                    def on_text(text: str, member: str = member, name: str = name) -> None:
+                        self.bridge.partial.emit(room.id, member, name, text)
+
+                    for message in self.engine.speak(room, member, on_text=on_text):
                         self.bridge.message.emit(room.id, message)
             except (EngineError, LLMError) as error:
                 self.bridge.failed.emit(room.id, str(error))
@@ -385,13 +428,19 @@ class MainWindow(QMainWindow):
         if self.is_open(room_id):
             self.set_status(f"{name} is writing...")
 
+    def on_partial(self, room_id: str, author: str, name: str, text: str) -> None:
+        if self.is_open(room_id):
+            self.view.show_draft(author, name, text)
+
     def on_failed(self, room_id: str, detail: str) -> None:
         if self.is_open(room_id):
+            self.view.clear_draft()
             self.set_status(detail, error=True)
 
     def on_idle(self, room_id: str) -> None:
         self.set_busy(False)
         if self.is_open(room_id):
+            self.view.clear_draft()
             # The worker changed its own copy of the room. Load the saved copy.
             self.room = self.engine.store.get(room_id)
             if not self.status.styleSheet():

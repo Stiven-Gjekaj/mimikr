@@ -85,3 +85,33 @@ def test_a_model_fault_shows_in_the_status_line(application, tmp_path):
     wait_until_idle(application, window)
     assert window.status.text() == "cannot reach the model server"
     assert window.send_button.isEnabled()
+
+
+class StreamingModel(FakeModel):
+    def stream_complete(self, messages, model, temperature):
+        yield from ["say", " less"]
+
+
+def test_the_reply_shows_as_a_draft_and_then_as_a_message(application, tmp_path):
+    window = make_window(tmp_path, StreamingModel())
+    drafts = []
+    window.bridge.partial.connect(lambda room, author, name, text: drafts.append(window.view.draft_text()))
+    room = window.engine.create_room("r", ["ana"])
+    window.select_room(room.id)
+    window.next_speaker()
+    wait_until_idle(application, window)
+    # The window handles each piece first, so the draft already shows the text so far.
+    assert drafts == ["say", "say less"]
+    assert window.view.texts() == ["say less"]
+    assert window.view.draft is None
+
+
+def test_a_draft_is_not_a_message(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    view = window.view
+    view.show_draft("ana", "ana", "hel")
+    view.show_draft("ana", "ana", "hello")
+    assert view.draft_text() == "hello"
+    assert view.texts() == []
+    view.clear_draft()
+    assert view.draft is None
