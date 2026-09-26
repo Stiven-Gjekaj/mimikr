@@ -17,6 +17,9 @@ from mimikr.writer import Completer, ModeError, write_reply
 
 # The maximum number of characters of liked replies in a prompt.
 LIKED_BUDGET = 1500
+# The maximum number of characters of the group lore in a prompt.
+LORE_BUDGET = 3000
+LORE_FILE = "lore.md"
 
 
 class EngineError(RuntimeError):
@@ -34,12 +37,29 @@ class RoomEngine:
         # Load the files again each time, so that edits take effect without a restart.
         return list_identities(self.config.identities_dir)
 
-    def create_room(self, name: str, members: list[str]) -> Room:
+    def lore(self) -> str:
+        """Return what the whole group knows, from lore.md in the directory of the identities."""
+        path = self.config.identities_dir / LORE_FILE
+        try:
+            return path.read_text(encoding="utf-8").strip()[:LORE_BUDGET]
+        except OSError:
+            return ""
+
+    def save_lore(self, text: str) -> None:
+        path = self.config.identities_dir / LORE_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text.strip() + "\n" if text.strip() else "", encoding="utf-8")
+
+    def set_topic(self, room: Room, topic: str) -> None:
+        room.topic = topic.strip()
+        self.store.save(room)
+
+    def create_room(self, name: str, members: list[str], topic: str = "") -> Room:
         known, _ = self.identities()
         unknown = [member for member in members if member not in known]
         if unknown or not members:
             raise EngineError(f"a room needs one or more known identities. Unknown: {unknown}")
-        return self.store.create(name.strip() or "Room", members)
+        return self.store.create(name.strip() or "Room", members, topic)
 
     def post_user_message(self, room: Room, text: str) -> RoomMessage:
         message = RoomMessage(author=USER, name="You", text=text.strip())
@@ -179,6 +199,7 @@ class RoomEngine:
                 history_budget=self.config.history_budget,
                 enforce_style=self.config.enforce_style,
                 avoid_repeats=self.config.avoid_repeats,
+                lore=self.lore(),
             )
         except ModeError as error:
             raise EngineError(str(error)) from None

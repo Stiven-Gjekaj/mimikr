@@ -314,3 +314,41 @@ def test_the_engine_does_not_send_the_same_short_reply_again(tmp_path):
     assert engine.speak(room, "ana") == []
     engine.config.avoid_repeats = False
     assert [m.text for m in engine.speak(room, "ana")] == ["bet"]
+
+
+def test_the_topic_and_the_lore_go_into_the_prompt(tmp_path):
+    model = FakeModel()
+    engine = make_engine(tmp_path, model, people=("ana",))
+    engine.save_lore("Ana and June met at art school. Sam is always late.")
+    room = engine.create_room("r", ["ana"], topic="  the new chapter of Soultale is out ")
+    engine.speak(room, "ana")
+    system = model.requests[-1]["messages"][0]["content"]
+    assert "## What the group knows\n\nAna and June met at art school. Sam is always late." in system
+    assert "## What happens now\n\nthe new chapter of Soultale is out" in system
+    engine.config.mode = "continue"
+    engine.set_topic(room, "a storm cut the power")
+    engine.speak(room, "ana")
+    prompt = model.requests[-1]["prompt"]
+    assert "About the group: Ana and June met at art school. Sam is always late." in prompt
+    assert "Now: a storm cut the power" in prompt
+
+
+def test_no_lore_and_no_topic_add_nothing(tmp_path):
+    model = FakeModel()
+    engine = make_engine(tmp_path, model, people=("ana",))
+    engine.speak(engine.create_room("r", ["ana"]), "ana")
+    system = model.requests[-1]["messages"][0]["content"]
+    assert "What the group knows" not in system and "What happens now" not in system
+
+
+def test_the_topic_is_saved_and_an_old_room_file_has_none(tmp_path):
+    import json
+
+    engine = make_engine(tmp_path, FakeModel(), people=("ana",))
+    room = engine.create_room("r", ["ana"], topic="exams")
+    assert engine.store.get(room.id).topic == "exams"
+    path = tmp_path / "data" / "rooms" / f"{room.id}.json"
+    data = json.loads(path.read_text())
+    del data["topic"]
+    path.write_text(json.dumps(data))
+    assert engine.store.get(room.id).topic == ""

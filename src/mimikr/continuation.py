@@ -31,10 +31,14 @@ def other_names(identity: Identity, room: Room, names: dict[str, str], exchanges
 
 def build_continuation(identity: Identity, room: Room, names: dict[str, str],
                        exchanges: list[Exchange] | None = None,
-                       history_budget: int = HISTORY_BUDGET) -> tuple[str, list[str]]:
+                       history_budget: int = HISTORY_BUDGET, lore: str = "") -> tuple[str, list[str]]:
     """Return the text for the model to continue, and the stop sequences."""
     me = speaker_name(identity)
     parts = [f"The chat log of {me}.", f"About {me}: " + " ".join(identity.personality.split())]
+    if lore.strip():
+        parts.append("About the group: " + " ".join(lore.split()))
+    if room.topic.strip():
+        parts.append("Now: " + " ".join(room.topic.split()))
     examples = format_examples(identity, exchanges)
     messages, trimmed = recent_messages(room.messages, history_budget)
     lines = [EARLIER] if trimmed else []

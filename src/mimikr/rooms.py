@@ -38,6 +38,8 @@ class Room:
     id: str = field(default_factory=_new_id)
     created: str = field(default_factory=_now)
     messages: list[RoomMessage] = field(default_factory=list)
+    # What is going on in the room, for example "the new chapter of Soultale is out".
+    topic: str = ""
 
     def next_speaker(self) -> str:
         """Return the member that speaks after the last member that spoke."""
@@ -61,6 +63,7 @@ class Room:
             id=data["id"],
             created=data["created"],
             messages=messages,
+            topic=data.get("topic", ""),
         )
 
 
@@ -74,8 +77,8 @@ class RoomStore:
             raise KeyError(room_id)
         return self.directory / f"{room_id}.json"
 
-    def create(self, name: str, members: list[str]) -> Room:
-        room = Room(name=name, members=members)
+    def create(self, name: str, members: list[str], topic: str = "") -> Room:
+        room = Room(name=name, members=members, topic=topic.strip())
         self.save(room)
         return room
 

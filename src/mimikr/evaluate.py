@@ -213,6 +213,7 @@ def run_evaluation(
     mode: str = "chat",
     enforce_style: bool = False,
     avoid_repeats: bool = False,
+    lore: str = "",
 ) -> Report:
     """Let the model write each test reply, and score the replies.
 
@@ -245,7 +246,7 @@ def run_evaluation(
             exchanges = index.select(query, example_embed, prompt.EXAMPLE_BUDGET)
         generated = write_reply(trained, room_for(trained, case.context), {}, exchanges, completer,
                                 model=model, temperature=temperature, mode=mode, enforce_style=enforce_style,
-                                avoid_repeats=avoid_repeats)
+                                avoid_repeats=avoid_repeats, lore=lore)
         results.append(
             CaseResult(
                 context=[f"{message.speaker}: {message.text}" for message in case.context[-4:]],

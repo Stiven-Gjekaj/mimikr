@@ -61,7 +61,7 @@ def format_examples(identity: Identity, exchanges: list[Exchange] | None) -> str
 
 
 def system_prompt(identity: Identity, room: Room, names: dict[str, str],
-                  exchanges: list[Exchange] | None = None) -> str:
+                  exchanges: list[Exchange] | None = None, lore: str = "") -> str:
     name = identity.display_name
     others = [names.get(member, member) for member in room.members if member != identity.id]
     people = ", ".join(["the user", *others])
@@ -71,6 +71,10 @@ def system_prompt(identity: Identity, room: Room, names: dict[str, str],
         f"Do not put your name before the message. Do not say that you are an AI or a model.",
         f"## About {name}\n\n{identity.personality}",
     ]
+    if lore.strip():
+        parts.append(f"## What the group knows\n\n{lore.strip()}")
+    if room.topic.strip():
+        parts.append(f"## What happens now\n\n{room.topic.strip()}")
     style = identity.style.describe()
     if style:
         parts.append(f"## How {name} writes\n\n" + "\n".join(f"- {line}" for line in style))
@@ -85,7 +89,8 @@ def system_prompt(identity: Identity, room: Room, names: dict[str, str],
 
 
 def build_messages(identity: Identity, room: Room, names: dict[str, str],
-                   exchanges: list[Exchange] | None = None, history_budget: int = HISTORY_BUDGET) -> list[dict]:
+                   exchanges: list[Exchange] | None = None, history_budget: int = HISTORY_BUDGET,
+                   lore: str = "") -> list[dict]:
     """Return the chat messages for an OpenAI-compatible API.
 
     The messages of the identity become 'assistant' messages.
@@ -113,7 +118,7 @@ def build_messages(identity: Identity, room: Room, names: dict[str, str],
     if turns[-1]["role"] == "assistant":
         turns.append({"role": "user", "content": "(Nobody answers. Write your next message.)"})
 
-    return [{"role": "system", "content": system_prompt(identity, room, names, exchanges)}, *turns]
+    return [{"role": "system", "content": system_prompt(identity, room, names, exchanges, lore)}, *turns]
 
 
 def split_reply(identity: Identity, reply: str, others: list[str] | tuple[str, ...] = ()) -> list[str]:

@@ -46,6 +46,16 @@ def check(config) -> int:
 FEW_CASES = 10
 
 
+def read_lore(config: Config) -> str:
+    """Return the group lore, as the rooms use it, so that a score measures the same prompt."""
+    from mimikr.engine import LORE_BUDGET, LORE_FILE
+
+    try:
+        return (config.identities_dir / LORE_FILE).read_text(encoding="utf-8").strip()[:LORE_BUDGET]
+    except OSError:
+        return ""
+
+
 def print_report(report: Report, show: bool) -> None:
     print(f"{report.identity}, model {report.model}, temperature {report.temperature}, {report.mode} mode, {report.examples} examples")
     count = len(report.results)
@@ -103,7 +113,8 @@ def evaluate(config: Config, name: str, cases: int | None, model: str | None, me
         report = run_evaluation(identity, client, model, temperature, embed=embed if meaning else None,
                                 max_cases=cases, progress=progress, examples=examples or config.examples,
                                 example_embed=embed, mode=mode or identity.mode or config.mode,
-                                enforce_style=config.enforce_style, avoid_repeats=config.avoid_repeats)
+                                enforce_style=config.enforce_style, avoid_repeats=config.avoid_repeats,
+                                lore=read_lore(config))
     except (EvaluationError, LLMError) as error:
         print(f"{chr(10) if started else ''}mimikr: {error}", file=sys.stderr)
         return 1

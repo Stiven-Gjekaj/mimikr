@@ -41,7 +41,7 @@ def collect(pieces: Iterable[str], split: Callable[[str], list[str]], on_text: C
 def write_reply(identity: Identity, room: Room, names: dict[str, str], exchanges: list[Exchange] | None,
                 completer: Completer, model: str, temperature: float, mode: str,
                 on_text: Callable[[str], None] | None = None, history_budget: int = HISTORY_BUDGET,
-                enforce_style: bool = False, avoid_repeats: bool = False) -> list[str]:
+                enforce_style: bool = False, avoid_repeats: bool = False, lore: str = "") -> list[str]:
     """Return the new messages of the identity.
 
     With enforce_style, the messages lose what the person clearly never does.
@@ -56,7 +56,7 @@ def write_reply(identity: Identity, room: Room, names: dict[str, str], exchanges
         return drop_repeats(texts, recent) if avoid_repeats else texts
 
     if mode == "chat":
-        messages = build_messages(identity, room, names, exchanges, history_budget)
+        messages = build_messages(identity, room, names, exchanges, history_budget, lore)
 
         others = other_names(identity, room, names, exchanges)
 
@@ -69,7 +69,7 @@ def write_reply(identity: Identity, room: Room, names: dict[str, str], exchanges
             reply = completer.complete(messages, model=model, temperature=temperature)
         return finish(split(reply))
     if mode == "continue":
-        text, stop = build_continuation(identity, room, names, exchanges, history_budget)
+        text, stop = build_continuation(identity, room, names, exchanges, history_budget, lore)
         others = other_names(identity, room, names, exchanges)
 
         def split(reply: str) -> list[str]:
