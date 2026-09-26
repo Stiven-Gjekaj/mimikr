@@ -4,9 +4,9 @@
 
 # Milestones
 
-The first phase is built: the identity files, the style profile, the prompt,
-the rooms, and the window.
-[The roadmap](roadmap.md) says what comes next.
+The code of each phase is built. No real model has run the score yet, so the
+defaults below are choices, and not results.
+[The roadmap](roadmap.md) says what is still open.
 This file holds the decisions that shape the work, and the reason for each.
 It also holds the options that lost, because the reason a choice lost is the
 part that a later reader needs.
@@ -117,8 +117,92 @@ The prompt holds the most recent part of the transcript that fits in 6000
 characters.
 Recent messages show how the person writes now.
 
-This is a first step. [The roadmap](roadmap.md) replaces it with examples that
-are similar to the current message.
+### Similar examples, and recent examples until a score says otherwise
+
+`examples = "similar"` cuts the transcript into exchanges: one turn of the
+person and up to three messages before it. An embedding model turns the
+messages before each turn into a vector. For a new message, the prompt holds
+the exchanges whose vectors are nearest, in the order of the transcript.
+
+The default stays `recent`. Similar examples are the better idea, but no score
+proves it yet, and they need a second model. P4 decides the default.
+
+The embeddings stay in `data/index/`. The key of the file is a hash of the
+transcript and of the name of the embedding model, so a change to either one
+makes the embeddings again.
+
+In `mimikr eval`, the index holds the training part only. Otherwise a test
+reply could come back as an example, and the score would measure a copy.
+
+- **Examples chosen by a model** lost. It costs one call to the chat model for
+  each reply, and an embedding costs a small part of that.
+- **A vector database** lost. One person has a few thousand exchanges at most,
+  and a JSON file and a loop find the nearest ones in no measurable time.
+
+### Two modes: chat and continue
+
+An instruct model learned to be a helpful assistant, and the prompt fights that
+voice in each reply. A base model learned only to continue text. Give it a chat
+log that ends with `Sam:`, and it writes as Sam, because that is the most
+likely next line.
+
+`mode = "continue"` sends such a log to `/v1/completions`. The stop sequences
+are the names of the other people, so the model stops at the end of the turn of
+the person. The reply is also cut at the name of another person, because some
+servers do not honor stop sequences.
+
+Each identity can set its own mode, because the mode goes with the model.
+
+`writer.py` writes the reply for a room and for `mimikr eval`. Thus a score
+measures the same prompt that a room sends.
+
+- **Only the chat mode** lost. It gives no way to test the idea above.
+- **A chat template on a base model** lost. A base model has no template, and a
+  made-up template is one more thing that can go wrong.
+
+### llama.cpp as the local server
+
+The user chose llama.cpp. It serves one model on each server, so the chat model
+and the embedding model need two addresses. `embedding_url` holds the second
+address. When it is empty, the embeddings go to `base_url`, which suits
+Ollama and LM Studio.
+
+The first test found that nomic-embed-text gives 0.79 for two texts about the
+same thing, and 0.41 for two texts that are not related. An unrelated reply
+does not score 0, and that is why the meaning score reports a baseline.
+
+### Importers for three applications
+
+`mimikr import` reads WhatsApp, Telegram Desktop and DiscordChatExporter. Each
+reader gives messages, and one writer turns them into `chat.md` lines. The
+command does not write over a file without `--force`, because a `chat.md` can
+hold edits that exist nowhere else.
+
+- **iMessage** lost. The Messages application has no export. A program that
+  reads its database needs Full Disk Access, and then it can read each message
+  of each person on the computer. That is much more than one conversation.
+  A person who has an export from another tool can turn it into
+  `Name: message` lines.
+- **Media and deleted messages** lost. They have no text to learn a style from.
+
+### Live replies
+
+The client asks the server to stream the reply. The window shows the text so
+far in a grey bubble, and replaces it with the real messages at the end. The
+grey bubble is not a message, and nothing saves it.
+
+- **Only the complete reply** lost. A local model on a laptop can take ten
+  seconds or more, and a window that shows nothing for that time looks broken.
+
+### Automatic rooms, and one Stop button
+
+**Auto** lets the members talk in turn for a number of messages. **Stop** ends
+any work: an automatic room, a round of replies, or one reply. A stop during a
+reply takes effect at the next piece of text, and the part that the model
+wrote goes away. A reply is whole or it does not exist.
+
+- **Keep the part of a stopped reply** lost. Half a message is a message that
+  the person never wrote, and the next reply then continues from it.
 
 ### A model call that blocks, in a worker thread
 
