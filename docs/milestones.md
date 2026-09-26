@@ -434,3 +434,58 @@ The limits of the run:
 
 The decision: `mode = "continue"` is the default. `examples = "recent"` stays
 the default.
+
+### Less repetition
+
+The room with the five identities showed the model repeat itself: the same
+stock reply three times, and emoji in almost each message. Three changes act on
+it, and `mimikr eval` now measures it.
+
+- **Avoid repeats** drops a message that the identity sent in its last six
+  messages, or earlier in the same reply. A person does not send the same
+  "bet" three times in a row.
+- **The emoji of a message** stay at the habit of the person: at most the
+  number of emoji that the person puts in 9 of 10 messages with emoji.
+- **The frequency and presence penalties** go to the server from the settings.
+  They are standard options of the OpenAI API. They are 0 by default, because
+  no score has measured another value yet.
+- **Repeats** in the report of `mimikr eval` is the share of replies that
+  repeat an earlier reply, for the real person and for the model.
+
+### The topic of a room, and the lore of a group
+
+The room also showed the identities cheer for a chapter that they knew nothing
+about. A room now has a topic, and the group has `identities/lore.md`, with the
+facts that the whole group knows. Both go into the prompt in both modes. The
+lore has a budget of 3000 characters.
+
+- **Facts that a model learns from the transcript** lost. A small model mixes
+  up the facts of a long transcript, and the person knows the facts better.
+
+### Replies to a message
+
+A message of the user can reply to another message. The prompt shows the
+quote, and the author of the quoted message answers first. The identities do
+not reply to a message by themselves: a model that points at the wrong message
+is worse than a model that points at none.
+
+### Windows and Linux
+
+The release builds the application on macOS, Windows and Linux, with
+PyInstaller, and each build must pass `scripts/smoke-test-app.py`: `check`
+reads the example identities, and the window runs for 10 seconds. Windows and
+Linux get a folder in a zip or a tar.gz, and not an installer.
+
+- **An installer, a Flatpak or an AppImage** lost for now. Each is a second
+  way to pack the application, and a folder works on each system.
+
+### What mimikr does not do
+
+These ideas lost, because they are not what the application is for:
+
+- **A game of real or fake**, where a person guesses which reply is real. It
+  is a test of the bots, and not a way to talk to them.
+- **GIFs and images in the bubbles.** An identity cannot choose a picture that
+  it has never seen, and a link that a model makes up shows nothing, or shows
+  something that nobody chose.
+- **Voice.** mimikr is a chat of text, as the transcripts are.
