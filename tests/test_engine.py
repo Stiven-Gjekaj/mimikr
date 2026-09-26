@@ -352,3 +352,19 @@ def test_the_topic_is_saved_and_an_old_room_file_has_none(tmp_path):
     del data["topic"]
     path.write_text(json.dumps(data))
     assert engine.store.get(room.id).topic == ""
+
+
+def test_a_reply_shows_its_quote_to_the_model_and_its_author_speaks_next(tmp_path):
+    model = FakeModel(reply="noodles always")
+    engine = make_engine(tmp_path, model, people=("ana", "bo", "cy"))
+    room = engine.create_room("r", ["ana", "bo", "cy"])
+    [bo_message] = engine.speak(room, "bo")
+    engine.speak(room, "cy")
+    engine.post_user_message(room, "same", reply_to=bo_message.id)
+    assert engine.next_speaker(room, random.Random(3)) == "bo"
+    engine.speak(room, "ana")
+    turns = model.requests[-1]["messages"][1:]
+    assert 'You: (a reply to bo: noodles always) same' in "\n".join(t["content"] for t in turns)
+    engine.config.mode = "continue"
+    engine.speak(room, "cy")
+    assert 'You: (a reply to bo: noodles always) same' in model.requests[-1]["prompt"]

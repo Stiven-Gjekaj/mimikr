@@ -11,7 +11,7 @@ them. TERMS.md section 5 says why.
 import re
 from datetime import datetime, tzinfo
 
-from mimikr.rooms import USER, Room
+from mimikr.rooms import USER, Room, quote_of
 
 
 def join_names(names: list[str]) -> str:
@@ -45,6 +45,9 @@ def room_as_text(room: Room, names: dict[str, str], now: datetime | None = None,
         text_lines = [line.strip() for line in message.text.splitlines() if line.strip()]
         if not text_lines:
             continue
+        quote = quote_of(room, message)
+        if quote:
+            text_lines[0] = f"(a reply to {quote.split(':', 1)[0]}) {text_lines[0]}"
         name = "You" if message.author == USER else message.name
         name = re.sub(r"[:\[\]#\s]+", " ", name).strip() or "Unknown"
         lines.append(f"[{local_time(message.time, zone)}] {name}: {text_lines[0]}")

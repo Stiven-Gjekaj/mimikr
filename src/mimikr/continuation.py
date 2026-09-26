@@ -11,7 +11,7 @@ import re
 from mimikr.examples import Exchange
 from mimikr.identity import Identity
 from mimikr.prompt import EARLIER, HISTORY_BUDGET, format_examples, recent_messages
-from mimikr.rooms import Room
+from mimikr.rooms import Room, quote_of
 
 
 def speaker_name(identity: Identity) -> str:
@@ -44,7 +44,11 @@ def build_continuation(identity: Identity, room: Room, names: dict[str, str],
     lines = [EARLIER] if trimmed else []
     for message in messages:
         who = me if message.author == identity.id else message.name
-        lines += [f"{who}: {line}" for line in message.text.splitlines() if line.strip()]
+        quote = quote_of(room, message)
+        text_lines = [line for line in message.text.splitlines() if line.strip()]
+        if quote and text_lines:
+            text_lines[0] = f"(a reply to {quote}) {text_lines[0]}"
+        lines += [f"{who}: {line}" for line in text_lines]
     log = "\n".join([*([examples, "..."] if examples else []), *lines, f"{me}:"])
     parts.append(log)
     stop = [f"\n{name}:" for name in other_names(identity, room, names, exchanges)]

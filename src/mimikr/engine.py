@@ -61,8 +61,8 @@ class RoomEngine:
             raise EngineError(f"a room needs one or more known identities. Unknown: {unknown}")
         return self.store.create(name.strip() or "Room", members, topic)
 
-    def post_user_message(self, room: Room, text: str) -> RoomMessage:
-        message = RoomMessage(author=USER, name="You", text=text.strip())
+    def post_user_message(self, room: Room, text: str, reply_to: str | None = None) -> RoomMessage:
+        message = RoomMessage(author=USER, name="You", text=text.strip(), reply_to=reply_to)
         room.messages.append(message)
         self.store.save(room)
         return message
@@ -146,6 +146,11 @@ class RoomEngine:
             return room.members[0]
         last = room.messages[-1]
         candidates = [member for member in room.members if member != last.author]
+        # The author of the message that the last message replies to speaks next.
+        if last.reply_to:
+            for message in room.messages:
+                if message.id == last.reply_to and message.author in candidates:
+                    return message.author
         known, _ = self.identities()
         for member in candidates:
             name = known[member].display_name if member in known else member

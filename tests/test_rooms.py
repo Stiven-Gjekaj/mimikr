@@ -1,6 +1,6 @@
 import pytest
 
-from mimikr.rooms import USER, Room, RoomMessage, RoomStore, search_rooms
+from mimikr.rooms import USER, Room, RoomMessage, RoomStore, quote_of, search_rooms
 
 
 def test_the_store_saves_and_loads_a_room(tmp_path):
@@ -61,3 +61,14 @@ def test_search_finds_a_room_by_its_name_or_a_member():
 def test_an_empty_search_keeps_each_room():
     rooms, names = search_fixture()
     assert len(search_rooms(rooms, "  ", names)) == 2
+
+
+def test_a_quote_names_the_author_and_cuts_a_long_text():
+    room = Room("r", ["sam"])
+    first = RoomMessage("sam", "Sam", "word " * 30)
+    reply = RoomMessage(USER, "You", "lol", reply_to=first.id)
+    room.messages = [first, reply]
+    quote = quote_of(room, reply, length=10)
+    assert quote == "Sam: word word ..."
+    assert quote_of(room, first) is None
+    assert quote_of(room, RoomMessage(USER, "You", "x", reply_to="gone")) is None

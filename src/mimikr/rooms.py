@@ -29,6 +29,8 @@ class RoomMessage:
     time: str = field(default_factory=_now)
     # The user liked this reply. A liked reply is an example in later prompts.
     liked: bool = False
+    # The id of the message that this message replies to.
+    reply_to: str | None = None
 
 
 @dataclass
@@ -125,3 +127,14 @@ def search_rooms(rooms: list[Room], query: str, names: dict[str, str]) -> list[t
         if hits or any(matches(text, query) for text in about):
             found.append((room, hits))
     return found
+
+
+def quote_of(room: Room, message: RoomMessage, length: int = 60) -> str | None:
+    """Return "Name: the start of the text" of the message that the message replies to, or None."""
+    if not message.reply_to:
+        return None
+    for other in room.messages:
+        if other.id == message.reply_to:
+            text = " ".join(other.text.split())
+            return f"{other.name}: {text[:length]}{'...' if len(text) > length else ''}"
+    return None

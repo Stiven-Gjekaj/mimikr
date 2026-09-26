@@ -4,7 +4,7 @@ import re
 
 from mimikr.examples import Exchange
 from mimikr.identity import Identity
-from mimikr.rooms import Room
+from mimikr.rooms import Room, quote_of
 from mimikr.transcript import Message
 
 # The maximum number of characters of real transcript in the prompt.
@@ -105,7 +105,9 @@ def build_messages(identity: Identity, room: Room, names: dict[str, str],
         if message.author == identity.id:
             role, text = "assistant", message.text
         else:
-            role, text = "user", f"{message.name}: {message.text}"
+            quote = quote_of(room, message)
+            note = f'(a reply to {quote}) ' if quote else ""
+            role, text = "user", f"{message.name}: {note}{message.text}"
         if turns and turns[-1]["role"] == role:
             turns[-1]["content"] += "\n" + text
         else:

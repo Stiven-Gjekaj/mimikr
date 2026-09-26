@@ -54,3 +54,10 @@ def test_an_empty_room_says_so():
 def test_the_file_name_is_safe():
     assert file_name(Room("Late night: part 2/3", ["sam"]), NOW) == "Late night part 23 2026-09-26.txt"
     assert file_name(Room("???", ["sam"]), NOW) == "room 2026-09-26.txt"
+
+
+def test_a_reply_says_whom_it_answers():
+    r = room()
+    r.messages.append(RoomMessage(author=USER, name="You", text="same", time="2026-09-26T15:03:00+00:00",
+                                  reply_to=r.messages[2].id))
+    assert room_as_text(r, NAMES, now=NOW, zone=timezone.utc).endswith("You: (a reply to Sam) same\n")
