@@ -261,3 +261,27 @@ def test_a_wrong_custom_accent_is_refused(application, tmp_path):
     page.custom_accent.setText("#FF8800")
     page.choose_custom_accent()
     assert window.engine.config.accent == "#ff8800" and page.accent_error.text() == ""
+
+
+def test_test_connection_checks_the_fields_before_a_save(application, tmp_path):
+    seen = []
+
+    def checker(config):
+        seen.append((config.base_url, config.model))
+        return [(True, "Chat server: 1 model (mistral-nemo)."), (False, "Embedding server: refused.")]
+
+    window = make_window(tmp_path, FakeModel())
+    page = window.settings
+    page.checker = checker
+    page.base_url.setText("http://localhost:8080/v1")
+    page.model.setText("mistral-nemo")
+    page.check()
+    deadline = time.monotonic() + 5
+    while not page.check_button.isEnabled():
+        assert time.monotonic() < deadline
+        application.processEvents()
+        time.sleep(0.01)
+    assert seen == [("http://localhost:8080/v1", "mistral-nemo")]
+    assert page.check_result.text() == "OK: Chat server: 1 model (mistral-nemo).\nFault: Embedding server: refused."
+    # The check does not change the settings.
+    assert window.engine.config.base_url != "http://localhost:8080/v1"

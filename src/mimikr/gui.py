@@ -43,6 +43,7 @@ from mimikr.config import Config, embedding_base_url, save_config
 from mimikr.engine import EngineError, RoomEngine
 from mimikr.llm import ChatClient, LLMError
 from mimikr.rooms import USER, Room, RoomMessage
+from mimikr.servers import check_servers
 
 BUBBLE_WIDTH = 520
 AVATAR_SIZE = 28
@@ -286,10 +287,14 @@ class SettingsPage(QScrollArea):
     # The window applies the look of the settings on the page, before they are saved.
     look_changed = Signal()
     saved = Signal()
+    # The lines of a connection check, from its worker thread.
+    checked = Signal(object)
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, checker: Callable[[Config], list[tuple[bool, str]]] = check_servers):
         super().__init__()
         self.config = config
+        self.checker = checker
+        self.checked.connect(self.show_check)
         self.setWidgetResizable(True)
         self.setFrameShape(QScrollArea.Shape.NoFrame)
         body = QWidget(objectName="page")
@@ -348,6 +353,14 @@ class SettingsPage(QScrollArea):
         form.addRow(self.label("API key"), self.api_key)
         form.addRow(self.label("Embedding server"), self.embedding_url)
         form.addRow(self.label("Embedding model"), self.embedding_model)
+        self.check_button = QPushButton("Test connection")
+        self.check_button.clicked.connect(self.check)
+        self.check_result = QLabel(objectName="hint", wordWrap=True)
+        self.check_result.setTextFormat(Qt.TextFormat.PlainText)
+        check_row = QHBoxLayout()
+        check_row.addWidget(self.check_button, alignment=Qt.AlignmentFlag.AlignTop)
+        check_row.addWidget(self.check_result, 1)
+        form.addRow(self.label(""), check_row)
         column.addWidget(server)
 
         # Replies.
@@ -471,14 +484,29 @@ class SettingsPage(QScrollArea):
         self.apply_look(self.config)
         self.look_changed.emit()
 
-    def save(self) -> None:
-        config = self.config
-        self.apply_look(config)
+    def apply_server(self, config: Config) -> None:
         config.base_url = self.base_url.text().strip() or Config.base_url
         config.model = self.model.text().strip() or Config.model
         config.api_key = self.api_key.text() or Config.api_key
         config.embedding_url = self.embedding_url.text().strip()
         config.embedding_model = self.embedding_model.text().strip() or Config.embedding_model
+
+    def check(self) -> None:
+        """Check the servers in the fields, before a save, in a worker thread."""
+        trial = replace(self.config)
+        self.apply_server(trial)
+        self.check_button.setEnabled(False)
+        self.check_result.setText("Checking...")
+        threading.Thread(target=lambda: self.checked.emit(self.checker(trial)), daemon=True).start()
+
+    def show_check(self, lines: list[tuple[bool, str]]) -> None:
+        self.check_button.setEnabled(True)
+        self.check_result.setText("\n".join(f"{'OK' if ok else 'Fault'}: {text}" for ok, text in lines))
+
+    def save(self) -> None:
+        config = self.config
+        self.apply_look(config)
+        self.apply_server(config)
         config.mode = self.mode.currentData()
         config.examples = self.examples.currentData()
         config.temperature = round(self.temperature.value(), 2)
