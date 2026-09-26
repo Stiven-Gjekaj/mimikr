@@ -12,7 +12,11 @@ from mimikr.config import Config
 from mimikr.examples import Embedder, Exchange, ExampleIndex, recent_query
 from mimikr.identity import Identity, list_identities
 from mimikr.rooms import USER, Room, RoomMessage, RoomStore
+from mimikr.transcript import Message
 from mimikr.writer import Completer, ModeError, write_reply
+
+# The maximum number of characters of liked replies in a prompt.
+LIKED_BUDGET = 1500
 
 
 class EngineError(RuntimeError):
@@ -42,6 +46,70 @@ class RoomEngine:
         room.messages.append(message)
         self.store.save(room)
         return message
+
+    def find_message(self, room: Room, message_id: str) -> RoomMessage:
+        for message in room.messages:
+            if message.id == message_id:
+                return message
+        raise EngineError(f"the room has no message with the id {message_id!r}")
+
+    def delete_message(self, room: Room, message_id: str) -> None:
+        room.messages.remove(self.find_message(room, message_id))
+        self.store.save(room)
+
+    def edit_message(self, room: Room, message_id: str, text: str) -> None:
+        if not text.strip():
+            raise EngineError("a message needs text. Delete the message instead")
+        self.find_message(room, message_id).text = text.strip()
+        self.store.save(room)
+
+    def set_liked(self, room: Room, message_id: str, liked: bool) -> None:
+        message = self.find_message(room, message_id)
+        if message.author not in room.members:
+            raise EngineError("only a reply of an identity can be liked")
+        message.liked = liked
+        self.store.save(room)
+
+    def last_turn(self, room: Room) -> tuple[str, list[RoomMessage]] | None:
+        """Return the member of the last turn and its messages, if an identity wrote the last message."""
+        if not room.messages or room.messages[-1].author not in room.members:
+            return None
+        author = room.messages[-1].author
+        turn = []
+        for message in reversed(room.messages):
+            if message.author != author:
+                break
+            turn.append(message)
+        return author, list(reversed(turn))
+
+    def remove_last_turn(self, room: Room) -> str:
+        """Remove the last turn of an identity, so that the identity can write it again. Return the member."""
+        last = self.last_turn(room)
+        if last is None:
+            raise EngineError("the last message is not from an identity")
+        member, turn = last
+        del room.messages[len(room.messages) - len(turn):]
+        self.store.save(room)
+        return member
+
+    def liked_exchanges(self, identity: Identity) -> list[Exchange]:
+        """Return the replies of the identity that the user liked, in all rooms, with the message before each."""
+        me = identity.speaker or identity.display_name
+        found: list[Exchange] = []
+        for room in self.store.list():
+            for index, message in enumerate(room.messages):
+                if not (message.liked and message.author == identity.id):
+                    continue
+                before = room.messages[index - 1] if index and room.messages[index - 1].author != identity.id else None
+                lines = ([Message(before.name, before.text)] if before else []) + [Message(me, message.text)]
+                found.append(Exchange(messages=lines, query=before.text if before else ""))
+        chosen, used = [], 0
+        for exchange in reversed(found):
+            if used + exchange.cost() > LIKED_BUDGET:
+                break
+            chosen.append(exchange)
+            used += exchange.cost()
+        return list(reversed(chosen))
 
     def next_speaker(self, room: Room, rng: random.Random | None = None) -> str:
         """Choose the member that speaks next.
@@ -95,9 +163,15 @@ class RoomEngine:
         if identity is None:
             raise EngineError(errors.get(member) or f"the identity {member!r} does not exist")
         names = {USER: "You"} | {key: value.display_name for key, value in known.items()}
+        exchanges = self.choose_exchanges(identity, room)
+        liked = self.liked_exchanges(identity)
+        if liked:
+            # The liked replies come after the examples of the transcript.
+            recent = [Exchange(prompt.select_examples(identity), "")] if identity.transcript else []
+            exchanges = (exchanges or recent) + liked
         try:
             texts = write_reply(
-                identity, room, names, self.choose_exchanges(identity, room), self.completer,
+                identity, room, names, exchanges, self.completer,
                 model=identity.model or self.config.model,
                 temperature=identity.temperature if identity.temperature is not None else self.config.temperature,
                 mode=identity.mode or self.config.mode,

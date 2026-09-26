@@ -27,6 +27,8 @@ class RoomMessage:
     text: str
     id: str = field(default_factory=_new_id)
     time: str = field(default_factory=_now)
+    # The user liked this reply. A liked reply is an example in later prompts.
+    liked: bool = False
 
 
 @dataclass

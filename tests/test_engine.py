@@ -239,3 +239,62 @@ def test_rotate_keeps_the_order_of_the_room(tmp_path):
     engine.config.turn_taking = "rotate"
     room.messages.append(RoomMessage(author="ana", name="ana", text="hey cy"))
     assert engine.next_speaker(room) == "bo"
+
+
+def test_edit_and_delete_change_the_saved_room(tmp_path):
+    engine = make_engine(tmp_path, FakeModel(reply="hey"), people=("ana",))
+    room = engine.create_room("r", ["ana"])
+    first = engine.post_user_message(room, "hi")
+    [reply] = engine.speak(room, "ana")
+    engine.edit_message(room, reply.id, "  hello there ")
+    engine.delete_message(room, first.id)
+    assert [m.text for m in engine.store.get(room.id).messages] == ["hello there"]
+    with pytest.raises(EngineError, match="needs text"):
+        engine.edit_message(room, reply.id, "   ")
+
+
+def test_regenerate_removes_the_whole_last_turn(tmp_path):
+    engine = make_engine(tmp_path, FakeModel(reply="a\nb"), people=("ana",))
+    room = engine.create_room("r", ["ana"])
+    engine.post_user_message(room, "hi")
+    room.messages += [RoomMessage(author="ana", name="ana", text=t) for t in ("one", "two")]
+    assert engine.remove_last_turn(room) == "ana"
+    assert [m.text for m in engine.store.get(room.id).messages] == ["hi"]
+    with pytest.raises(EngineError, match="not from an identity"):
+        engine.remove_last_turn(room)
+
+
+def test_a_liked_reply_is_an_example_in_later_prompts(tmp_path):
+    model = FakeModel(reply="hey")
+    engine = make_engine(tmp_path, model, people=("ana",))
+    room = engine.create_room("r", ["ana"])
+    engine.post_user_message(room, "noodles tonight?")
+    [reply] = engine.speak(room, "ana")
+    engine.set_liked(room, reply.id, True)
+    other = engine.create_room("other", ["ana"])
+    engine.speak(other, "ana")
+    system = model.requests[-1]["messages"][0]["content"]
+    assert "You: noodles tonight?\nana: hey" in system
+    engine.set_liked(room, reply.id, False)
+    engine.speak(other, "ana")
+    assert "noodles tonight" not in model.requests[-1]["messages"][0]["content"]
+
+
+def test_only_a_reply_of_an_identity_can_be_liked(tmp_path):
+    engine = make_engine(tmp_path, FakeModel(), people=("ana",))
+    room = engine.create_room("r", ["ana"])
+    mine = engine.post_user_message(room, "hi")
+    with pytest.raises(EngineError, match="only a reply"):
+        engine.set_liked(room, mine.id, True)
+
+
+def test_old_room_files_with_no_liked_field_still_load(tmp_path):
+    import json
+
+    engine = make_engine(tmp_path, FakeModel(), people=("ana",))
+    room = engine.create_room("r", ["ana"])
+    path = tmp_path / "data" / "rooms" / f"{room.id}.json"
+    data = json.loads(path.read_text())
+    data["messages"] = [{"author": "user", "name": "You", "text": "hi", "id": "abc", "time": "2026-01-01T00:00:00+00:00"}]
+    path.write_text(json.dumps(data))
+    assert engine.store.get(room.id).messages[0].liked is False
