@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -248,6 +249,9 @@ class NewRoomDialog(QDialog):
 class MessageView(QScrollArea):
     """Show the messages of a room as bubbles."""
 
+    # The id of a message, and the place on the screen, when the user asks for its menu.
+    menu_requested = Signal(str, object)
+
     def __init__(self):
         super().__init__()
         self.setWidgetResizable(True)
@@ -329,7 +333,14 @@ class MessageView(QScrollArea):
         elif mine and self.last_author not in (None, USER):
             self.column.addSpacing(10)
         self.last_author = message.author
-        row, _ = self.bubble_row(message.text, "mine" if mine else "bubble", mine)
+        row, bubble = self.bubble_row(message.text, "mine" if mine else "bubble", mine)
+        bubble.setProperty("message_id", message.id)
+        bubble.setProperty("liked", message.liked)
+        bubble.setToolTip("You liked this reply." if message.liked else "")
+        bubble.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        bubble.customContextMenuRequested.connect(
+            lambda point, bubble=bubble: self.menu_requested.emit(
+                bubble.property("message_id"), bubble.mapToGlobal(point)))
         self.column.addWidget(row)
 
     def show_draft(self, author: str, name: str, text: str) -> None:
@@ -364,6 +375,12 @@ class MessageView(QScrollArea):
         for label in self.findChildren(QLabel):
             if label.objectName() in ("mine", "bubble", "draft"):
                 self.fit(label, label.text())
+
+    def bubble(self, message_id: str) -> QLabel | None:
+        for label in self.findChildren(QLabel):
+            if label.property("message_id") == message_id:
+                return label
+        return None
 
     def texts(self) -> list[str]:
         return [label.text() for label in self.findChildren(QLabel) if label.objectName() in ("mine", "bubble")]
@@ -629,6 +646,8 @@ class MainWindow(QMainWindow):
         self.reconnect = reconnect
         # Ask the user for an image file. A test puts a function here that gives a path.
         self.pick_image: Callable[[], Path | None] = self.ask_for_image
+        # Ask the user for the new text of a message. It gets the old text.
+        self.ask_text: Callable[[str], str | None] = self.ask_for_text
         # Ask the user where to save an export. It gets a suggested name.
         self.pick_save_path: Callable[[str], Path | None] = self.ask_for_save_path
         self.room: Room | None = None
@@ -752,6 +771,7 @@ class MainWindow(QMainWindow):
         head.addWidget(delete, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         self.view = MessageView()
+        self.view.menu_requested.connect(self.message_menu)
         self.view.picture_for = lambda author: self.avatars.find("identity", author)
 
         self.status = QLabel(objectName="status")
@@ -847,6 +867,65 @@ class MainWindow(QMainWindow):
         self.settings_button.setChecked(True)
         self.refresh_pictures()
         self.pages.setCurrentIndex(SETTINGS_PAGE)
+
+    # Message actions
+
+    def ask_for_text(self, old: str) -> str | None:
+        text, ok = QInputDialog.getMultiLineText(self, "Edit the message", "Text", old)
+        return text if ok else None
+
+    def message_menu(self, message_id: str, where) -> None:
+        if self.room is None:
+            return
+        room = self.engine.store.get(self.room.id)
+        try:
+            message = self.engine.find_message(room, message_id)
+        except EngineError:
+            return
+        last = self.engine.last_turn(room)
+        menu = QMenu(self)
+        menu.addAction("Copy", lambda: self.message_action("copy", message_id))
+        menu.addAction("Edit...", lambda: self.message_action("edit", message_id)).setEnabled(not self.busy)
+        if message.author in room.members:
+            label = "Remove the like" if message.liked else "Like this reply"
+            menu.addAction(label, lambda: self.message_action("like", message_id)).setEnabled(not self.busy)
+        if last and message_id in [m.id for m in last[1]]:
+            menu.addAction("Write again", lambda: self.message_action("regenerate", message_id)).setEnabled(
+                not self.busy)
+        menu.addSeparator()
+        menu.addAction("Delete", lambda: self.message_action("delete", message_id)).setEnabled(not self.busy)
+        menu.exec(where)
+
+    def message_action(self, action: str, message_id: str) -> None:
+        """Do an action of the menu of a message: copy, edit, like, regenerate or delete."""
+        if self.room is None:
+            return
+        room = self.engine.store.get(self.room.id)
+        message = self.engine.find_message(room, message_id)
+        if action == "copy":
+            QGuiApplication.clipboard().setText(message.text)
+            self.set_status("Copied the message.")
+            return
+        if self.busy:
+            return
+        if action == "edit":
+            text = self.ask_text(message.text)
+            if text is None or not text.strip():
+                return
+            self.engine.edit_message(room, message_id, text)
+        elif action == "like":
+            self.engine.set_liked(room, message_id, not message.liked)
+        elif action == "delete":
+            self.engine.delete_message(room, message_id)
+        elif action == "regenerate":
+            member = self.engine.remove_last_turn(room)
+            self.room = room
+            self.show_room(room)
+            members = iter([member])
+            self.start(lambda _room: next(members, None))
+            return
+        self.room = room
+        self.show_room(room)
 
     # Export
 

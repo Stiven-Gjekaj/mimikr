@@ -429,3 +429,61 @@ def test_a_cancelled_export_writes_nothing(application, tmp_path):
     window.pick_save_path = lambda name: None
     window.export_to_file()
     assert window.status.text() == ""
+
+
+def room_with_reply(application, tmp_path, reply="hey"):
+    window = make_window(tmp_path, FakeModel(reply=reply))
+    room = window.engine.create_room("r", ["ana"])
+    window.select_room(room.id)
+    window.composer.setPlainText("hi")
+    window.send()
+    wait_until_idle(application, window)
+    return window, window.engine.store.get(room.id)
+
+
+def test_edit_a_message_from_its_menu(application, tmp_path):
+    window, room = room_with_reply(application, tmp_path)
+    reply = room.messages[-1]
+    window.ask_text = lambda old: old + " there"
+    window.message_action("edit", reply.id)
+    assert window.view.texts() == ["hi", "hey there"]
+    assert window.engine.store.get(room.id).messages[-1].text == "hey there"
+
+
+def test_a_cancelled_edit_changes_nothing(application, tmp_path):
+    window, room = room_with_reply(application, tmp_path)
+    window.ask_text = lambda old: None
+    window.message_action("edit", room.messages[-1].id)
+    assert window.view.texts() == ["hi", "hey"]
+
+
+def test_delete_a_message_from_its_menu(application, tmp_path):
+    window, room = room_with_reply(application, tmp_path)
+    window.message_action("delete", room.messages[0].id)
+    assert window.view.texts() == ["hey"]
+
+
+def test_like_marks_the_bubble(application, tmp_path):
+    window, room = room_with_reply(application, tmp_path)
+    reply = room.messages[-1]
+    window.message_action("like", reply.id)
+    assert window.view.bubble(reply.id).property("liked") is True
+    window.message_action("like", reply.id)
+    assert window.view.bubble(reply.id).property("liked") is False
+
+
+def test_write_again_replaces_the_last_reply(application, tmp_path):
+    window, room = room_with_reply(application, tmp_path)
+    window.engine.completer.reply = "second try"
+    window.message_action("regenerate", room.messages[-1].id)
+    wait_until_idle(application, window)
+    assert window.view.texts() == ["hi", "second try"]
+    assert [m.text for m in window.engine.store.get(room.id).messages] == ["hi", "second try"]
+
+
+def test_copy_puts_one_message_on_the_clipboard(application, tmp_path):
+    from PySide6.QtGui import QGuiApplication
+
+    window, room = room_with_reply(application, tmp_path)
+    window.message_action("copy", room.messages[-1].id)
+    assert QGuiApplication.clipboard().text() == "hey"

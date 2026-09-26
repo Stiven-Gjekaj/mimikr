@@ -158,6 +158,7 @@ QLabel#emptyText {{ color: {p.muted}; }}
 QLabel#name {{ color: {p.muted}; font-size: {small}px; font-weight: 600; }}
 QLabel#bubble {{ background: {p.bubble}; border-radius: 16px; padding: 9px 13px; }}
 QLabel#draft {{ background: {p.bubble}; color: {p.muted}; border-radius: 16px; padding: 9px 13px; }}
+QLabel#bubble[liked="true"] {{ border: 1px solid {p.accent}; }}
 QLabel#mine {{ background: {p.accent}; color: {p.accent_text}; border-radius: 16px; padding: 9px 13px; }}
 QLabel#avatar {{ color: #ffffff; font-size: {small}px; font-weight: 700; border-radius: 14px; }}
 
