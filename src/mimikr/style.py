@@ -11,6 +11,9 @@ _EMOJI = re.compile(
     "[\U0001f300-\U0001faff\U00002600-\U000027bf\U0001f000-\U0001f2ff\U0001f900-\U0001f9ff]"
 )
 _WORD = re.compile(r"\S+")
+# A message that is only a link, a mention, or the code of a custom emoji. It
+# shows no words of the person, so it is not a stock reply.
+_NOT_WORDS = re.compile(r"\s*(?:https?://\S+|@\S+|<a?:\w+:\d+>|:\w+:)\s*", re.IGNORECASE)
 
 
 @dataclass
@@ -67,7 +70,7 @@ def build_profile(messages: list[Message], speaker: str) -> StyleProfile:
         return StyleProfile()
 
     emoji = Counter(symbol for text in texts for symbol in _EMOJI.findall(text))
-    short = Counter(text.lower() for text in texts if len(_WORD.findall(text)) <= 3)
+    short = Counter(text.lower() for text in texts if len(_WORD.findall(text)) <= 3 and not _NOT_WORDS.fullmatch(text))
 
     # A turn is a run of messages from the speaker with no other speaker between them.
     turns: list[int] = []

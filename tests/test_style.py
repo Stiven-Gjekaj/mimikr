@@ -48,3 +48,10 @@ def test_counts_messages_in_a_row_as_one_turn():
     )
     assert profile.messages_per_turn == 2.0
     assert any("short messages in a row" in line for line in profile.describe())
+
+
+def test_links_mentions_and_custom_emoji_are_not_stock_replies():
+    lines = [("Ana", text) for text in ["https://tenor.com/view/cat-123"] * 3 + ["@june"] * 3 + [":pepe:"] * 3
+             + ["<:pepe:123456>"] * 3 + ["bet"] * 2]
+    profile = build_profile(conversation(*lines), "Ana")
+    assert profile.stock_replies == ["bet"]
