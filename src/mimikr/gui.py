@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -36,6 +37,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -96,6 +98,38 @@ def round_picture(path: Path, size: int, ratio: float = 2.0) -> QPixmap | None:
     result.setDevicePixelRatio(ratio)
     _round_pictures[key] = result
     return result
+
+
+def detach(widget: QWidget | None) -> None:
+    """Take the widget out of the window now, and delete it later.
+
+    deleteLater alone keeps the widget as a child until the event loop runs, so
+    a search of the children would still find it.
+    """
+    if widget is not None:
+        widget.setParent(None)
+        widget.deleteLater()
+
+
+PICTURE_SIZE = 256
+IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.webp *.bmp *.gif)"
+
+
+def save_picture(source: Path, target: Path) -> None:
+    """Cut the middle square of the image, make it 256 pixels wide, and write it as PNG.
+
+    Raise ValueError if the file is not an image.
+    """
+    image = QImage(str(source))
+    if image.isNull():
+        raise ValueError(f"{source.name} is not an image that mimikr can read")
+    side = min(image.width(), image.height())
+    square = image.copy((image.width() - side) // 2, (image.height() - side) // 2, side, side)
+    square = square.scaled(PICTURE_SIZE, PICTURE_SIZE, Qt.AspectRatioMode.IgnoreAspectRatio,
+                           Qt.TransformationMode.SmoothTransformation)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not square.save(str(target), "PNG"):
+        raise ValueError(f"cannot write {target}")
 
 
 def avatar(key: str, name: str, size: int = AVATAR_SIZE, picture: Path | None = None) -> QLabel:
@@ -236,9 +270,7 @@ class MessageView(QScrollArea):
     def clear(self) -> None:
         self.draft = None
         while self.column.count() > 1:
-            widget = self.column.takeAt(1).widget()
-            if widget is not None:
-                widget.deleteLater()
+            detach(self.column.takeAt(1).widget())
         self.last_author = None
 
     def fit(self, bubble: QLabel, text: str) -> None:
@@ -435,6 +467,12 @@ class SettingsPage(QScrollArea):
         form.addRow(self.label("Temperature"), self.temperature)
         column.addWidget(replies)
 
+        pictures = self.card("Pictures", "A picture for each identity. mimikr keeps a copy in data/avatars/.")
+        self.pictures = QVBoxLayout()
+        self.pictures.setSpacing(8)
+        pictures.layout().addLayout(self.pictures)
+        column.addWidget(pictures)
+
         self.note = QLabel(objectName="hint", wordWrap=True)
         self.save_button = QPushButton("Save", objectName="primary")
         self.save_button.clicked.connect(self.save)
@@ -587,6 +625,8 @@ class MainWindow(QMainWindow):
         self.config_path = config_path
         # The window calls this after a save, so that new server settings take effect.
         self.reconnect = reconnect
+        # Ask the user for an image file. A test puts a function here that gives a path.
+        self.pick_image: Callable[[], Path | None] = self.ask_for_image
         self.room: Room | None = None
         self.busy = False
         self.bridge = Bridge()
@@ -683,6 +723,14 @@ class MainWindow(QMainWindow):
         header = QWidget(objectName="header")
         head = QHBoxLayout(header)
         head.setContentsMargins(28, 16, 20, 14)
+        self.room_picture = QPushButton(objectName="ghost", toolTip="Change the picture of the room")
+        self.room_picture.setFixedSize(44, 44)
+        self.room_picture.setStyleSheet("QPushButton#ghost { padding: 0; border-radius: 22px; }")
+        self.room_picture.clicked.connect(self.room_picture_menu)
+        self.room_picture_holder = QHBoxLayout(self.room_picture)
+        self.room_picture_holder.setContentsMargins(4, 4, 4, 4)
+        head.addWidget(self.room_picture)
+        head.addSpacing(8)
         heading = QVBoxLayout()
         heading.setSpacing(2)
         self.title = QLabel(objectName="title")
@@ -787,7 +835,69 @@ class MainWindow(QMainWindow):
 
     def show_settings(self) -> None:
         self.settings_button.setChecked(True)
+        self.refresh_pictures()
         self.pages.setCurrentIndex(SETTINGS_PAGE)
+
+    # Pictures
+
+    def ask_for_image(self) -> Path | None:
+        path, _ = QFileDialog.getOpenFileName(self, "Choose a picture", str(Path.home()), IMAGE_FILTER)
+        return Path(path) if path else None
+
+    def choose_picture(self, kind: str, key: str) -> None:
+        source = self.pick_image()
+        if source is None:
+            return
+        try:
+            save_picture(source, self.avatars.path_for(kind, key))
+        except ValueError as error:
+            QMessageBox.warning(self, "mimikr", str(error))
+            return
+        self.pictures_changed()
+
+    def remove_picture(self, kind: str, key: str) -> None:
+        self.avatars.remove(kind, key)
+        self.pictures_changed()
+
+    def pictures_changed(self) -> None:
+        self.reload_rooms()
+        if self.room is not None:
+            self.show_room(self.room)
+        self.refresh_pictures()
+
+    def refresh_pictures(self) -> None:
+        """Fill the Pictures card of the settings: one row for each identity."""
+        layout = self.settings.pictures
+        while layout.count():
+            detach(layout.takeAt(0).widget())
+        identities, _ = self.engine.identities()
+        if not identities:
+            layout.addWidget(QLabel("No identities found.", objectName="hint"))
+        for identity in identities.values():
+            row = QWidget()
+            line = QHBoxLayout(row)
+            line.setContentsMargins(0, 0, 0, 0)
+            line.setSpacing(10)
+            line.addWidget(avatar(identity.id, identity.display_name, 32,
+                                  self.avatars.find("identity", identity.id)))
+            line.addWidget(QLabel(identity.display_name), 1)
+            choose = QPushButton("Choose...")
+            choose.clicked.connect(lambda _checked, key=identity.id: self.choose_picture("identity", key))
+            remove = QPushButton("Remove")
+            remove.setEnabled(self.avatars.path_for("identity", identity.id).is_file())
+            remove.clicked.connect(lambda _checked, key=identity.id: self.remove_picture("identity", key))
+            line.addWidget(choose)
+            line.addWidget(remove)
+            layout.addWidget(row)
+
+    def room_picture_menu(self) -> None:
+        if self.room is None:
+            return
+        menu = QMenu(self)
+        menu.addAction("Choose picture...", lambda: self.choose_picture("room", self.room.id))
+        remove = menu.addAction("Remove picture", lambda: self.remove_picture("room", self.room.id))
+        remove.setEnabled(self.avatars.path_for("room", self.room.id).is_file())
+        menu.exec(self.room_picture.mapToGlobal(self.room_picture.rect().bottomLeft()))
 
     # Rooms
 
@@ -844,14 +954,23 @@ class MainWindow(QMainWindow):
             self.pages.setCurrentIndex(EMPTY_PAGE)
             return
         self.room = self.engine.store.get(room_id)
-        self.title.setText(self.room.name)
-        self.subtitle.setText("With " + self.names(self.room.members))
-        self.view.clear()
-        for message in self.room.messages:
-            self.view.add(message)
+        self.show_room(self.room)
         self.set_status("")
         self.pages.setCurrentIndex(ROOM_PAGE)
         self.composer.setFocus()
+
+    def show_room(self, room: Room) -> None:
+        """Draw the header and the messages of the room again."""
+        self.title.setText(room.name)
+        self.subtitle.setText("With " + self.names(room.members))
+        while self.room_picture_holder.count():
+            detach(self.room_picture_holder.takeAt(0).widget())
+        first = room.members[0] if room.members else room.id
+        picture = self.avatars.find("room", room.id) or (self.avatars.find("identity", first) if room.members else None)
+        self.room_picture_holder.addWidget(avatar(room.id, room.name, 36, picture))
+        self.view.clear()
+        for message in room.messages:
+            self.view.add(message)
 
     def select_room(self, room_id: str) -> None:
         self.reload_rooms()
@@ -878,6 +997,7 @@ class MainWindow(QMainWindow):
         if answer != QMessageBox.StandardButton.Yes:
             return
         self.engine.store.delete(self.room.id)
+        self.avatars.remove("room", self.room.id)
         self.room = None
         self.reload_rooms()
         self.open_room(None)

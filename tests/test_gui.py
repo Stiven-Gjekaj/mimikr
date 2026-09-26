@@ -339,3 +339,55 @@ def test_a_room_card_shows_the_picture_of_the_room(application, tmp_path):
     window.reload_rooms()
     [picture] = avatars_in(window.rooms.itemWidget(window.rooms.item(0)))
     assert not picture.pixmap().isNull()
+
+
+def test_choose_a_picture_for_an_identity_from_the_settings(application, tmp_path):
+    from PySide6.QtGui import QImage
+
+    window = make_window(tmp_path, FakeModel())
+    window.pick_image = lambda: write_picture(tmp_path / "photo.jpg", 300, 200)
+    window.show_settings()
+    window.choose_picture("identity", "ana")
+    saved = tmp_path / "data" / "avatars" / "identity-ana.png"
+    image = QImage(str(saved))
+    assert (image.width(), image.height()) == (256, 256)
+    # The directory of the identity gets no file.
+    assert sorted(p.name for p in (tmp_path / "identities" / "ana").iterdir()) == ["personality.md"]
+    rows = [label for label in window.settings.findChildren(QLabel) if label.objectName() == "avatar"]
+    assert any(not label.pixmap().isNull() for label in rows)
+
+
+def test_a_file_that_is_not_an_image_is_refused(application, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    warnings = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
+    window = make_window(tmp_path, FakeModel())
+    text = tmp_path / "notes.png"
+    text.write_text("hello", encoding="utf-8")
+    window.pick_image = lambda: text
+    window.choose_picture("identity", "ana")
+    assert warnings == ["notes.png is not an image that mimikr can read"]
+    assert not (tmp_path / "data" / "avatars" / "identity-ana.png").exists()
+
+
+def test_a_cancelled_choice_changes_nothing(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    window.pick_image = lambda: None
+    window.choose_picture("room", "abc")
+    assert not (tmp_path / "data" / "avatars").exists()
+
+
+def test_the_room_picture_shows_in_the_header_and_goes_with_the_room(application, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    window = make_window(tmp_path, FakeModel())
+    room = window.engine.create_room("r", ["ana"])
+    window.select_room(room.id)
+    window.pick_image = lambda: write_picture(tmp_path / "room.png")
+    window.choose_picture("room", room.id)
+    [header_picture] = avatars_in(window.room_picture)
+    assert not header_picture.pixmap().isNull()
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    window.delete_room()
+    assert not window.avatars.path_for("room", room.id).exists()
