@@ -58,3 +58,11 @@ def test_saving_writes_over_the_old_file(tmp_path):
     save_config(Config(model="new"), path)
     assert load_config(path, environ={}).model == "new"
     assert not path.with_suffix(".tmp").exists()
+
+
+def test_convert_reads_true_and_false_in_words_and_in_toml():
+    from mimikr.config import convert
+
+    assert convert(True, "false") is False and convert(False, "YES") is True
+    assert convert(True, False) is False
+    assert convert(0, "3") == 3 and convert(Path("a"), "b") == Path("b")

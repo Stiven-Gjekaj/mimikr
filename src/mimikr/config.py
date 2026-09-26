@@ -59,10 +59,24 @@ def load_config(path: Path = Path("mimikr.toml"), environ: dict[str, str] | None
     for item in fields(Config):
         if item.name not in values:
             continue
-        default = getattr(config, item.name)
-        value = values[item.name]
-        setattr(config, item.name, type(default)(value) if not isinstance(default, Path) else Path(value))
+        setattr(config, item.name, convert(getattr(config, item.name), values[item.name]))
     return config
+
+
+def convert(default: object, value: object) -> object:
+    """Give the value the type of the default. An environment variable is always text."""
+    if isinstance(default, bool):
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in ("true", "1", "yes", "on"):
+            return True
+        if text in ("false", "0", "no", "off", ""):
+            return False
+        raise ValueError(f"{value!r} is not true or false")
+    if isinstance(default, Path):
+        return Path(value)
+    return type(default)(value)
 
 
 def embedding_base_url(config: Config) -> str:
@@ -78,7 +92,9 @@ def save_config(config: Config, path: Path = Path("mimikr.toml")) -> None:
     lines = ["# The settings of mimikr. The settings page of the window writes this file.", ""]
     for item in fields(Config):
         value = getattr(config, item.name)
-        if isinstance(value, (Path, str)):
+        if isinstance(value, bool):
+            text = "true" if value else "false"
+        elif isinstance(value, (Path, str)):
             # A JSON string is also a valid TOML basic string.
             text = json.dumps(str(value), ensure_ascii=False)
         else:
