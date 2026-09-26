@@ -49,7 +49,9 @@ class LocalServer:
         command = [self.executable, "-m", self.model, "--port", str(self.port), "--host", "127.0.0.1",
                    "--alias", self.alias, "-c", str(self.context)]
         if self.embeddings:
-            command.append("--embeddings")
+            # A batch of 2048 tokens takes a long message whole. The default of
+            # 512 refuses it.
+            command += ["--embeddings", "-b", "2048", "-ub", "2048"]
         return command
 
     def start(self) -> None:

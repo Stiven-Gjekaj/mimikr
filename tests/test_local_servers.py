@@ -37,7 +37,7 @@ def model_file(tmp_path) -> str:
 def test_the_command_has_the_model_the_port_the_alias_and_the_context(tmp_path):
     server = LocalServer("embedding", "/bin/llama-server", "/m.gguf", 8081, "nomic", tmp_path, 4096, embeddings=True)
     assert server.command() == ["/bin/llama-server", "-m", "/m.gguf", "--port", "8081", "--host", "127.0.0.1",
-                                "--alias", "nomic", "-c", "4096", "--embeddings"]
+                                "--alias", "nomic", "-c", "4096", "--embeddings", "-b", "2048", "-ub", "2048"]
 
 
 def test_start_wait_and_stop_a_server(tmp_path):
