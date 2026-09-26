@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Test a built application: it reads identities, and its window starts.
 
+On macOS, the test also finds the version of pyproject.toml in Info.plist.
+
     python scripts/smoke-test-app.py <the program>
 
 The program is dist/mimikr.app/Contents/MacOS/mimikr on macOS,
@@ -10,14 +12,24 @@ home, and the Qt offscreen platform, so it opens no window.
 """
 
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 from pathlib import Path
 
 program = Path(sys.argv[1]).resolve()
+plist = program.parent.parent / "Info.plist"
+if plist.exists():
+    version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    info = plistlib.loads(plist.read_bytes())
+    for key in ("CFBundleShortVersionString", "CFBundleVersion"):
+        if info.get(key) != version:
+            sys.exit(f"{key} in Info.plist is {info.get(key)!r}, and pyproject.toml says {version!r}")
+    print(f"Info.plist says version {version}.")
 home = Path(tempfile.mkdtemp())
 shutil.copytree("examples/identities", home / "identities")
 environment = {**os.environ, "MIMIKR_HOME": str(home), "QT_QPA_PLATFORM": "offscreen"}

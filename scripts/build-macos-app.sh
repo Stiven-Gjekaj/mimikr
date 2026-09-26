@@ -28,6 +28,14 @@ uv run --group build pyinstaller \
     --collect-submodules mimikr \
     packaging/launch.py
 
+# PyInstaller writes the version 0.0.0 into Info.plist. Write the version of
+# the package. A change to Info.plist breaks the signature, so sign again.
+plist=dist/mimikr.app/Contents/Info.plist
+plutil -replace CFBundleShortVersionString -string "$version" "$plist"
+plutil -replace CFBundleVersion -string "$version" "$plist"
+codesign --force --deep --sign - dist/mimikr.app
+codesign --verify --deep --strict dist/mimikr.app
+
 zip="dist/mimikr-$version-macos-$arch.zip"
 rm -f "$zip"
 ditto -c -k --keepParent dist/mimikr.app "$zip"
