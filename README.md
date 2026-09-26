@@ -14,8 +14,6 @@ _A short description, a transcript, and a model on your own computer._
 [![MIT licence](https://img.shields.io/badge/mit_licence-d9f99d?style=for-the-badge&logoColor=07090f)](LICENSE)
 
 [![CI](https://github.com/Stiven-Gjekaj/mimikr/actions/workflows/ci.yml/badge.svg)](https://github.com/Stiven-Gjekaj/mimikr/actions/workflows/ci.yml)
-![Phase](https://img.shields.io/badge/phase-P4_open-34d399?style=flat-square&labelColor=07090f)
-![Local](https://img.shields.io/badge/data-stays_local-a78bfa?style=flat-square&labelColor=07090f)
 
 <p align="center">
   <a href="#overview"><b>Overview</b></a> |
@@ -27,8 +25,6 @@ _A short description, a transcript, and a model on your own computer._
   <a href="#how-a-reply-is-made"><b>How it works</b></a> |
   <a href="docs/roadmap.md"><b>Roadmap</b></a>
 </p>
-
-<a href="https://ko-fi.com/stivengjekaj"><img src="https://img.shields.io/badge/Ko--fi-Support_this_project-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support this project on Ko-fi"/></a>
 
 </div>
 
