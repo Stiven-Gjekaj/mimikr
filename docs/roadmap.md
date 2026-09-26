@@ -133,3 +133,25 @@ before the reply ends, and then one message "say less" with no grey bubble.
 
 `tests/test_gui.py` runs ten turns, stops after the third, and stops in the
 middle of a reply. The stopped reply leaves no message.
+
+---
+
+## After P7 (built)
+
+These came after the plan of P1 to P7. Each is built and has tests.
+
+- A budget for the room in the prompt, so that a long room fits the context.
+- Keep the clear habits of the person in each reply.
+- The next speaker by name, or at random.
+- The menu of a message: copy, edit, delete, write again, like.
+- Realistic timing.
+- Search in rooms and messages.
+- An identity editor, with chat import by file or by drop.
+- Start llama.cpp from the settings page.
+- A macOS application, a release workflow, and a Homebrew cask.
+- CI on macOS, Linux and Windows.
+
+Still open:
+
+- P4: the run with the real model and a real transcript.
+- The first release: a tag, the draft, and the cask in the tap.
