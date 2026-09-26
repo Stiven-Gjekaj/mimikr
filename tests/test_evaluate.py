@@ -78,7 +78,7 @@ def test_a_count_difference_is_relative_and_a_rate_difference_is_absolute():
 
 
 class WordEmbedder:
-    """Embed a text as the counts of its words, in 64 buckets. Keep each call."""
+    """Embed a text as the counts of its words, in 256 buckets. Keep each call."""
 
     def __init__(self):
         self.calls: list[list[str]] = []
@@ -87,9 +87,9 @@ class WordEmbedder:
         self.calls.append(list(texts))
         vectors = []
         for text in texts:
-            vector = [0.0] * 64
+            vector = [0.0] * 256
             for word in text.lower().split():
-                vector[zlib.crc32(word.encode()) % 64] += 1
+                vector[zlib.crc32(word.encode()) % 256] += 1
             vectors.append(vector)
         return vectors
 
