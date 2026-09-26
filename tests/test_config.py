@@ -34,3 +34,11 @@ def test_the_examples_are_recent_by_default_and_the_environment_can_change_them(
 
 def test_the_mode_is_chat_by_default():
     assert Config().mode == "chat"
+
+
+def test_the_look_has_defaults_and_the_file_can_change_it(tmp_path):
+    assert (Config().theme, Config().accent, Config().font_size) == ("system", "violet", 14)
+    path = tmp_path / "mimikr.toml"
+    path.write_text('theme = "dark"\naccent = "#ff8800"\nfont_size = 16\n', encoding="utf-8")
+    config = load_config(path, environ={})
+    assert (config.theme, config.accent, config.font_size) == ("dark", "#ff8800", 16)

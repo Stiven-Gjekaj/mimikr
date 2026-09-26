@@ -32,6 +32,11 @@ class Config:
     # The server of the embedding model. Empty means the server in base_url.
     # llama.cpp serves one model on each server, so it needs a second address.
     embedding_url: str = ""
+    # The look of the window. theme is "system", "light" or "dark". accent is a
+    # name from theme.ACCENTS or a "#rrggbb" color.
+    theme: str = "system"
+    accent: str = "violet"
+    font_size: int = 14
     identities_dir: Path = Path("identities")
     data_dir: Path = Path("data")
 
