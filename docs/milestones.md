@@ -160,6 +160,21 @@ measures the same prompt that a room sends.
 - **A chat template on a base model** lost. A base model has no template, and a
   made-up template is one more thing that can go wrong.
 
+### One model: Mistral Nemo 12B Instruct
+
+The user chose to download no model other than Mistral Nemo 12B Instruct, at
+Q4_K_M, and nomic-embed-text for the embeddings. P4 thus compares the modes and
+the examples, and not models.
+
+Mistral Nemo won the choice before any score. It holds the voice of a character
+well, it fits in 16 GB at Q4_K_M, and the transcripts are English only.
+
+- **A bake-off of Llama 3.1 8B, Qwen3 8B and Mistral Nemo** lost. The user
+  chose not to download them.
+- **A base model for the continuation mode** lost, for the same reason. The
+  continuation mode runs on the instruct model. It then has part of the voice
+  of an assistant, and the score measures how much.
+
 ### llama.cpp as the local server
 
 The user chose llama.cpp. It serves one model on each server, so the chat model

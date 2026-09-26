@@ -82,16 +82,18 @@ The code is built: `examples = "similar"` in rooms, and `--examples similar` in
 and that the prompt holds the exchange that matches the question. The exit
 test itself runs in P4.
 
-## P4: the choice of model and of the mode (open)
+## P4: the choice of mode and of examples (open)
 
-**Goal:** a default model, mode and choice of examples that the P2 score chose.
+**Goal:** a default mode and choice of examples, with Mistral Nemo 12B Instruct.
+
+The project downloads no other model. [The milestones](milestones.md) say why.
+So P4 compares the ways to use one model, and not models.
 
 - Get a real transcript of 50 turns or more.
-- Run `mimikr eval` for each candidate, in the chat mode:
-  Mistral Nemo 12B Instruct, Llama 3.1 8B Instruct, and Qwen3 8B.
-- Run it in the continuation mode with a base model, such as Mistral Nemo 12B
-  Base.
-- Run the best one with `--examples similar`.
+- Run `mimikr eval` four times: the chat mode and the continuation mode, each
+  with `--examples recent` and `--examples similar`.
+- The continuation mode sends a chat log to an instruct model here, not to a
+  base model. The score tells if that still beats the chat mode.
 - Run each score two times, because the model writes different replies each
   time.
 - Record the table of `mimikr scores` and the choice in
