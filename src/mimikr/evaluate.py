@@ -8,7 +8,9 @@ The identity that the model uses knows only the part of the transcript before
 the first test turn. Thus the model cannot copy a real reply from its prompt.
 """
 
+import math
 from dataclasses import dataclass
+from typing import Protocol
 
 from mimikr.style import StyleProfile, build_profile
 from mimikr.transcript import Message
@@ -108,3 +110,42 @@ def score_style(real_turns: list[list[str]], generated_turns: list[list[str]]) -
     features = {name: (getattr(real, name), getattr(generated, name)) for name in STYLE_FEATURES}
     differences = [feature_difference(name, *values) for name, values in features.items()]
     return StyleScore(score=1 - sum(differences) / len(differences), features=features)
+
+
+class Embedder(Protocol):
+    def __call__(self, texts: list[str]) -> list[list[float]]: ...
+
+
+@dataclass
+class MeaningScore:
+    # The mean similarity of each reply of the model with its real reply.
+    score: float
+    # The mean similarity of each real reply with the real reply of a different
+    # case. A score near the baseline means that the replies match the person
+    # no better than a random reply of that person does.
+    baseline: float | None
+
+
+def cosine(a: list[float], b: list[float]) -> float:
+    length = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return sum(x * y for x, y in zip(a, b)) / length if length else 0.0
+
+
+def score_meaning(real_turns: list[list[str]], generated_turns: list[list[str]], embed: Embedder) -> MeaningScore:
+    """Compare each generated turn with the real turn of the same case."""
+    real = ["\n".join(turn) for turn in real_turns]
+    generated = ["\n".join(turn) for turn in generated_turns]
+    # An empty reply has no meaning to compare, and some servers refuse to embed it.
+    answered = [index for index, text in enumerate(generated) if text.strip()]
+    vectors = embed(real + [generated[index] for index in answered])
+    real_vectors, generated_vectors = vectors[: len(real)], dict(zip(answered, vectors[len(real) :]))
+
+    similarities = [
+        cosine(real_vectors[index], generated_vectors[index]) if index in generated_vectors else 0.0
+        for index in range(len(real))
+    ]
+    baseline = None
+    if len(real) >= 2:
+        pairs = [cosine(real_vectors[index], real_vectors[(index + 1) % len(real)]) for index in range(len(real))]
+        baseline = sum(pairs) / len(pairs)
+    return MeaningScore(score=sum(similarities) / len(similarities), baseline=baseline)

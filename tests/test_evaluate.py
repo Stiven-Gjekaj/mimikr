@@ -1,6 +1,16 @@
+import zlib
+
 import pytest
 
-from mimikr.evaluate import EvaluationError, feature_difference, score_style, split_cases, turn_starts
+from mimikr.evaluate import (
+    EvaluationError,
+    cosine,
+    feature_difference,
+    score_meaning,
+    score_style,
+    split_cases,
+    turn_starts,
+)
 from mimikr.transcript import Message
 
 
@@ -72,3 +82,50 @@ def test_a_count_difference_is_relative_and_a_rate_difference_is_absolute():
     assert feature_difference("median_words", 4, 8) == 0.5
     assert feature_difference("median_words", 0, 0) == 0.0
     assert feature_difference("emoji_rate", 0.1, 0.4) == pytest.approx(0.3)
+
+
+class WordEmbedder:
+    """Embed a text as the counts of its words, in 64 buckets. Keep each call."""
+
+    def __init__(self):
+        self.calls: list[list[str]] = []
+
+    def __call__(self, texts):
+        self.calls.append(list(texts))
+        vectors = []
+        for text in texts:
+            vector = [0.0] * 64
+            for word in text.lower().split():
+                vector[zlib.crc32(word.encode()) % 64] += 1
+            vectors.append(vector)
+        return vectors
+
+
+REAL = [["the kitchen was chaos"], ["breakfast is a myth"], ["lunch tho", "lunch i can do"]]
+
+
+def test_the_same_replies_have_the_best_meaning_score():
+    assert score_meaning(REAL, REAL, WordEmbedder()).score == pytest.approx(1.0)
+
+
+def test_unrelated_replies_have_a_worse_meaning_score():
+    other = [["my cat sleeps"], ["taxes are due"], ["see you monday"]]
+    assert score_meaning(REAL, other, WordEmbedder()).score < 0.5
+
+
+def test_the_baseline_compares_each_real_reply_with_a_different_real_reply():
+    result = score_meaning(REAL, REAL, WordEmbedder())
+    assert result.baseline is not None and result.baseline < 0.5
+    assert score_meaning(REAL[:1], REAL[:1], WordEmbedder()).baseline is None
+
+
+def test_an_empty_reply_scores_zero_and_is_not_embedded():
+    embedder = WordEmbedder()
+    result = score_meaning(REAL, [REAL[0], [], REAL[2]], embedder)
+    assert result.score == pytest.approx(2 / 3)
+    assert "" not in embedder.calls[0]
+    assert len(embedder.calls) == 1
+
+
+def test_the_cosine_of_a_zero_vector_is_zero():
+    assert cosine([0.0, 0.0], [1.0, 0.0]) == 0.0
