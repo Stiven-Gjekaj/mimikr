@@ -1,6 +1,8 @@
+import json
+
 import pytest
 
-from mimikr.importers import ExportError, clean_name, read_whatsapp, write_transcript
+from mimikr.importers import ExportError, clean_name, read_telegram, read_whatsapp, write_transcript
 from mimikr.transcript import Message, parse_transcript
 
 
@@ -70,3 +72,36 @@ def test_the_export_reads_back_through_the_transcript_reader():
     assert [(m.speaker, m.text) for m in parse_transcript(write_transcript(read_whatsapp(IOS)))] == [
         ("June", "are you up"), ("Sam", "unfortunately"), ("Sam", "time: 10pm"),
     ]
+
+
+TELEGRAM = {
+    "name": "June",
+    "type": "personal_chat",
+    "messages": [
+        {"id": 1, "type": "service", "date": "2024-01-01T10:00:00", "action": "phone_call"},
+        {"id": 2, "type": "message", "date": "2024-01-01T10:01:00", "from": "June", "text": "noodles?"},
+        {"id": 3, "type": "message", "date": "2024-01-01T10:02:00", "from": "Sam",
+         "text": ["say ", {"type": "bold", "text": "less"}, "\nsee u at 1"]},
+        {"id": 4, "type": "message", "date": "2024-01-01T10:03:00", "from": "Sam", "text": "",
+         "photo": "photos/photo_1.jpg"},
+        {"id": 5, "type": "message", "date": "2024-01-01T10:04:00", "from": None, "text": "hello"},
+    ],
+}
+
+
+def test_reads_a_telegram_export():
+    messages = read_telegram(json.dumps(TELEGRAM))
+    assert [(m.speaker, m.text) for m in messages] == [
+        ("June", "noodles?"), ("Sam", "say less\nsee u at 1"), ("Deleted Account", "hello"),
+    ]
+    assert messages[0].time == "2024-01-01 10:01:00"
+
+
+def test_refuses_the_export_of_all_telegram_chats():
+    with pytest.raises(ExportError, match="Export one chat"):
+        read_telegram(json.dumps({"chats": {"list": []}}))
+
+
+def test_refuses_a_file_that_is_not_json():
+    with pytest.raises(ExportError, match="not the JSON export of Telegram Desktop"):
+        read_telegram("12/31/23, 9:41 PM - June: hi")

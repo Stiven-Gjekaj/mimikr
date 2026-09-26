@@ -4,6 +4,7 @@ Each reader returns a list of messages. `write_transcript` writes them in the
 `Name: message` form that `transcript.py` reads.
 """
 
+import json
 import re
 
 from mimikr.transcript import Message
@@ -70,3 +71,40 @@ def read_whatsapp(text: str) -> list[Message]:
     if not messages and text.strip():
         raise ExportError("no WhatsApp message found. Export the chat as a text file, with no media")
     return [m for m in messages if not _WHATSAPP_PLACEHOLDERS.match(m.text.strip())]
+
+
+def _load_json(text: str, application: str, refuse_all_chats: bool = False) -> dict:
+    try:
+        data = json.loads(text)
+    except ValueError as error:
+        raise ExportError(f"the file is not the JSON export of {application}: {error}") from None
+    if refuse_all_chats and isinstance(data, dict) and "chats" in data:
+        raise ExportError(f"the file holds all the chats. Export one chat from {application}")
+    if not isinstance(data, dict) or not isinstance(data.get("messages"), list):
+        raise ExportError(f"the file is not the JSON export of one chat in {application}")
+    return data
+
+
+def _telegram_text(value) -> str:
+    """Telegram gives the text as a string, or as a list of strings and styled parts."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(part if isinstance(part, str) else str(part.get("text", "")) for part in value)
+    return ""
+
+
+def read_telegram(text: str) -> list[Message]:
+    """Read result.json from 'Export chat history' in Telegram Desktop, as JSON.
+
+    The reader skips service messages, and a photo or a file with no caption.
+    """
+    messages = []
+    for item in _load_json(text, "Telegram Desktop", refuse_all_chats=True)["messages"]:
+        if item.get("type") != "message":
+            continue
+        body = _telegram_text(item.get("text")).strip()
+        if body:
+            time = str(item.get("date", "")).replace("T", " ") or None
+            messages.append(Message(speaker=item.get("from") or "Deleted Account", text=body, time=time))
+    return messages
