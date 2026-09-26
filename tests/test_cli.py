@@ -88,3 +88,15 @@ def test_eval_can_embed_with_a_second_client(tmp_path, capsys):
     chat, embedder = FakeClient(), FakeClient()
     evaluate(make_config(tmp_path), "sam", None, None, True, False, client=chat, embed_client=embedder)
     assert chat.embedding_models == [] and embedder.embedding_models == ["embedder"]
+
+
+def test_the_examples_option_has_priority_over_the_setting(tmp_path, capsys):
+    client = FakeClient()
+    config = make_config(tmp_path)
+    evaluate(config, "sam", None, None, False, False, client=client, examples="similar")
+    out = capsys.readouterr().out
+    assert "similar examples" in out
+    # The similar examples need the embedding model, even with no meaning score.
+    assert client.embedding_models
+    evaluate(config, "sam", None, None, False, False, client=FakeClient())
+    assert "recent examples" in capsys.readouterr().out
