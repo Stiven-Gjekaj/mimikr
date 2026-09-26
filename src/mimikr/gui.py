@@ -1083,7 +1083,7 @@ class MainWindow(QMainWindow):
     def next_speaker(self) -> None:
         if self.room is None or self.busy:
             return
-        members = iter([self.room.next_speaker()])
+        members = iter([self.engine.next_speaker(self.room)])
         self.start(lambda room: next(members, None))
 
     def auto_or_stop(self) -> None:
@@ -1099,7 +1099,7 @@ class MainWindow(QMainWindow):
             if remaining[0] == 0:
                 return None
             remaining[0] -= 1
-            return room.next_speaker()
+            return self.engine.next_speaker(room)
 
         self.start(next_member)
 

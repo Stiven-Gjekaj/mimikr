@@ -27,6 +27,8 @@ class Config:
     # Remove from a reply what the person clearly never does: capitals at the
     # start, a period at the end, emoji. See style.enforce.
     enforce_style: bool = True
+    # How a room chooses the next speaker: "smart" or "rotate". See engine.next_speaker.
+    turn_taking: str = "smart"
     # How the model writes: "chat" sends chat messages to an instruct model, and
     # "continue" gives a chat log to a base model to continue.
     mode: str = "chat"

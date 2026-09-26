@@ -1,9 +1,12 @@
+import random
+
 import pytest
 
 from test_evaluate import WordEmbedder
 
 from mimikr.config import Config
 from mimikr.engine import EngineError, RoomEngine
+from mimikr.rooms import RoomMessage
 
 
 class FakeModel:
@@ -199,3 +202,40 @@ def test_the_engine_enforces_the_style_of_the_transcript(tmp_path):
     assert [m.text for m in engine.speak(room, "ana")] == ["sure thing"]
     engine.config.enforce_style = False
     assert [m.text for m in engine.speak(room, "ana")] == ["Sure thing."]
+
+
+def three(tmp_path) -> tuple:
+    engine = make_engine(tmp_path, FakeModel(), people=("ana", "bo", "cy"))
+    return engine, engine.create_room("r", ["ana", "bo", "cy"])
+
+
+def test_the_first_member_speaks_first(tmp_path):
+    engine, room = three(tmp_path)
+    assert engine.next_speaker(room) == "ana"
+
+
+def test_a_member_named_in_the_last_message_speaks_next(tmp_path):
+    engine, room = three(tmp_path)
+    engine.speak(room, "ana")
+    engine.post_user_message(room, "what do you think, CY?")
+    assert engine.next_speaker(room, random.Random(1)) == "cy"
+
+
+def test_a_name_inside_a_word_does_not_count(tmp_path):
+    engine, room = three(tmp_path)
+    room.messages.append(RoomMessage(author="ana", name="ana", text="the boat is late"))
+    picks = {engine.next_speaker(room, random.Random(seed)) for seed in range(30)}
+    assert picks == {"bo", "cy"}
+
+
+def test_the_last_speaker_does_not_speak_twice_in_a_row(tmp_path):
+    engine, room = three(tmp_path)
+    room.messages.append(RoomMessage(author="bo", name="bo", text="hm"))
+    assert all(engine.next_speaker(room, random.Random(seed)) != "bo" for seed in range(30))
+
+
+def test_rotate_keeps_the_order_of_the_room(tmp_path):
+    engine, room = three(tmp_path)
+    engine.config.turn_taking = "rotate"
+    room.messages.append(RoomMessage(author="ana", name="ana", text="hey cy"))
+    assert engine.next_speaker(room) == "bo"

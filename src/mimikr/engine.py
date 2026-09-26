@@ -3,6 +3,8 @@
 The engine does not know about the GUI. The GUI calls it from a worker thread.
 """
 
+import random
+import re
 from collections.abc import Callable
 
 from mimikr import prompt
@@ -40,6 +42,28 @@ class RoomEngine:
         room.messages.append(message)
         self.store.save(room)
         return message
+
+    def next_speaker(self, room: Room, rng: random.Random | None = None) -> str:
+        """Choose the member that speaks next.
+
+        With turn_taking = "rotate", the members speak in the order of the room.
+        With "smart", a member whose name is in the last message speaks next.
+        Otherwise a random member speaks, but not the member that spoke last.
+        """
+        if self.config.turn_taking == "rotate" or len(room.members) == 1:
+            return room.next_speaker()
+        if self.config.turn_taking != "smart":
+            raise EngineError(f"the setting turn_taking is {self.config.turn_taking!r}. Use 'smart' or 'rotate'")
+        if not any(message.author in room.members for message in room.messages):
+            return room.members[0]
+        last = room.messages[-1]
+        candidates = [member for member in room.members if member != last.author]
+        known, _ = self.identities()
+        for member in candidates:
+            name = known[member].display_name if member in known else member
+            if re.search(rf"(?<!\w){re.escape(name)}(?!\w)", last.text, re.IGNORECASE):
+                return member
+        return (rng or random).choice(candidates)
 
     def choose_exchanges(self, identity: Identity, room: Room) -> list[Exchange] | None:
         """Return the exchanges for the prompt, or None for the recent examples."""
