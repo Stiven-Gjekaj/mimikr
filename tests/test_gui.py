@@ -35,8 +35,9 @@ def make_window(tmp_path, model: FakeModel, reconnect=None) -> MainWindow:
         directory = tmp_path / "identities" / person
         directory.mkdir(parents=True)
         (directory / "personality.md").write_text(f"This is {person}.", encoding="utf-8")
+    # The fake models give the same reply each time, so the window keeps repeats.
     config = Config(identities_dir=tmp_path / "identities", data_dir=tmp_path / "data", realistic_timing=False,
-                    mode="chat")
+                    mode="chat", avoid_repeats=False)
     return MainWindow(RoomEngine(config, model), config_path=tmp_path / "mimikr.toml", reconnect=reconnect)
 
 

@@ -1,4 +1,4 @@
-from mimikr.style import StyleProfile, enforce
+from mimikr.style import StyleProfile, drop_repeats, enforce
 
 
 def casual(**changes) -> StyleProfile:
@@ -30,3 +30,11 @@ def test_a_few_messages_do_not_show_a_habit():
 
 def test_a_message_of_emoji_only_goes_away():
     assert enforce(casual(), ["😂😂", "ok"]) == ["ok"]
+
+
+def test_a_repeat_of_a_recent_message_goes_away_with_no_case_or_space():
+    assert drop_repeats(["Bet", "see u at 1"], recent=["bet ", "ok"]) == ["see u at 1"]
+
+
+def test_a_repeat_inside_one_reply_goes_away():
+    assert drop_repeats(["lol", "LOL", "ok"], recent=[]) == ["lol", "ok"]

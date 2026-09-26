@@ -101,7 +101,7 @@ def evaluate(config: Config, name: str, cases: int | None, model: str | None, me
         report = run_evaluation(identity, client, model, temperature, embed=embed if meaning else None,
                                 max_cases=cases, progress=progress, examples=examples or config.examples,
                                 example_embed=embed, mode=mode or identity.mode or config.mode,
-                                enforce_style=config.enforce_style)
+                                enforce_style=config.enforce_style, avoid_repeats=config.avoid_repeats)
     except (EvaluationError, LLMError) as error:
         print(f"{chr(10) if started else ''}mimikr: {error}", file=sys.stderr)
         return 1

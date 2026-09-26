@@ -178,6 +178,7 @@ class RoomEngine:
                 on_text=on_text,
                 history_budget=self.config.history_budget,
                 enforce_style=self.config.enforce_style,
+                avoid_repeats=self.config.avoid_repeats,
             )
         except ModeError as error:
             raise EngineError(str(error)) from None

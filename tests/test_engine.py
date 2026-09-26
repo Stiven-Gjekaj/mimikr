@@ -305,3 +305,12 @@ def test_a_reply_that_starts_with_the_name_of_another_member_loses_the_name(tmp_
     engine = make_engine(tmp_path, FakeModel(reply="bo: you are late\nbo: sorry"), people=("ana", "bo"))
     room = engine.create_room("r", ["ana", "bo"])
     assert [m.text for m in engine.speak(room, "ana")] == ["you are late"]
+
+
+def test_the_engine_does_not_send_the_same_short_reply_again(tmp_path):
+    engine = make_engine(tmp_path, FakeModel(reply="bet"), people=("ana",))
+    room = engine.create_room("r", ["ana"])
+    assert [m.text for m in engine.speak(room, "ana")] == ["bet"]
+    assert engine.speak(room, "ana") == []
+    engine.config.avoid_repeats = False
+    assert [m.text for m in engine.speak(room, "ana")] == ["bet"]

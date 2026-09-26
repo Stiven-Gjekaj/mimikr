@@ -38,6 +38,8 @@ class Config:
     # Remove from a reply what the person clearly never does: capitals at the
     # start, a period at the end, emoji. See style.enforce.
     enforce_style: bool = True
+    # Drop a message that repeats one of the last messages of the identity.
+    avoid_repeats: bool = True
     # How a room chooses the next speaker: "smart" or "rotate". See engine.next_speaker.
     turn_taking: str = "smart"
     # Send each reply after about the time that a person takes to write it.

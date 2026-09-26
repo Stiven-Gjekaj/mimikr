@@ -131,3 +131,22 @@ def enforce(profile: StyleProfile, texts: list[str]) -> list[str]:
         if text:
             result.append(text)
     return result
+
+
+def _key(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
+def drop_repeats(texts: list[str], recent: list[str]) -> list[str]:
+    """Remove a message that the identity sent in its recent messages, or earlier in the same reply.
+
+    A person does not answer "bet" three times in a row, but a small model does.
+    """
+    seen = {_key(text) for text in recent}
+    kept = []
+    for text in texts:
+        if _key(text) in seen:
+            continue
+        seen.add(_key(text))
+        kept.append(text)
+    return kept
