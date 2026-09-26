@@ -4,6 +4,9 @@ Ollama, LM Studio and the llama.cpp server all give this API.
 The client blocks. The GUI calls it from a worker thread.
 """
 
+import json
+from collections.abc import Iterator
+
 import httpx
 
 
@@ -50,6 +53,42 @@ class ChatClient:
             return response.json()["choices"][0]["text"] or ""
         except (ValueError, KeyError, IndexError) as error:
             raise LLMError(f"the model server returned an unknown answer: {response.text[:300]}") from error
+
+    def _stream(self, path: str, payload: dict, piece) -> Iterator[str]:
+        """Send a request with stream on, and give each piece of text as it arrives.
+
+        The server sends server-sent events: lines that start with "data: ",
+        and "data: [DONE]" at the end.
+        """
+        try:
+            with self._client.stream("POST", path, json={**payload, "stream": True}) as response:
+                if response.status_code != 200:
+                    response.read()
+                    raise LLMError(f"the model server returned {response.status_code}: {response.text[:300]}")
+                for line in response.iter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        return
+                    try:
+                        text = piece(json.loads(data)["choices"][0])
+                    except (ValueError, KeyError, IndexError, TypeError) as error:
+                        raise LLMError(f"the model server sent an unknown event: {data[:300]}") from error
+                    if text:
+                        yield text
+        except httpx.HTTPError as error:
+            raise LLMError(f"cannot reach the model server at {self._client.base_url}: {error}") from error
+
+    def stream_complete(self, messages: list[dict], model: str, temperature: float) -> Iterator[str]:
+        payload = {"model": model, "messages": messages, "temperature": temperature}
+        return self._stream("chat/completions", payload, lambda choice: (choice.get("delta") or {}).get("content"))
+
+    def stream_continue(self, prompt: str, model: str, temperature: float, stop: list[str],
+                        max_tokens: int = 200) -> Iterator[str]:
+        payload = {"model": model, "prompt": prompt, "temperature": temperature, "stop": stop,
+                   "max_tokens": max_tokens}
+        return self._stream("completions", payload, lambda choice: choice.get("text"))
 
     def embed(self, texts: list[str], model: str) -> list[list[float]]:
         """Return one embedding for each text, in the same order."""

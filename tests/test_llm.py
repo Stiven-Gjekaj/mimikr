@@ -91,3 +91,45 @@ def test_continue_text_reports_an_error_status():
         lambda request: httpx.Response(500, text="boom")))
     with pytest.raises(LLMError, match="500: boom"):
         client.continue_text("x", model="m", temperature=0.5, stop=[])
+
+
+def sse(*events: str) -> bytes:
+    return "".join(f"data: {event}\n\n" for event in events).encode()
+
+
+def test_stream_complete_gives_each_piece_of_the_reply():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, content=sse(
+            '{"choices":[{"delta":{"role":"assistant"}}]}',
+            '{"choices":[{"delta":{"content":"lol "}}]}',
+            '{"choices":[{"delta":{"content":"ok"}}]}',
+            "[DONE]",
+        ), headers={"content-type": "text/event-stream"})
+
+    client = ChatClient("http://model.test/v1", "k", transport=httpx.MockTransport(handler))
+    assert list(client.stream_complete([{"role": "user", "content": "hi"}], "m", 0.5)) == ["lol ", "ok"]
+    assert seen["body"]["stream"] is True
+
+
+def test_stream_continue_reads_the_text_of_each_event():
+    client = ChatClient("http://model.test/v1", "k", transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, content=sse('{"choices":[{"text":" say"}]}',
+                                                        '{"choices":[{"text":" less"}]}', "[DONE]"))))
+    assert "".join(client.stream_continue("Sam:", "m", 0.5, stop=[])) == " say less"
+
+
+def test_a_stream_error_status_becomes_an_llm_error():
+    client = ChatClient("http://model.test/v1", "k", transport=httpx.MockTransport(
+        lambda request: httpx.Response(503, text="loading model")))
+    with pytest.raises(LLMError, match="503: loading model"):
+        list(client.stream_complete([], "m", 0.5))
+
+
+def test_an_unknown_stream_event_becomes_an_llm_error():
+    client = ChatClient("http://model.test/v1", "k", transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, content=sse("{not json"))))
+    with pytest.raises(LLMError, match="unknown event"):
+        list(client.stream_complete([], "m", 0.5))
