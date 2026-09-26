@@ -220,6 +220,7 @@ class NewRoomDialog(QDialog):
         self.setWindowTitle("New room")
         self.setMinimumWidth(360)
         self.name = QLineEdit(placeholderText="Late night")
+        self.topic = QLineEdit(placeholderText="Optional. For example: the new chapter of Soultale is out")
         self.members = QListWidget(objectName="members")
         for identity in identities.values():
             item = QListWidgetItem(identity.display_name)
@@ -244,6 +245,9 @@ class NewRoomDialog(QDialog):
         layout.addSpacing(6)
         layout.addWidget(QLabel("NAME", objectName="sectionLabel"))
         layout.addWidget(self.name)
+        layout.addSpacing(8)
+        layout.addWidget(QLabel("TOPIC", objectName="sectionLabel"))
+        layout.addWidget(self.topic)
         layout.addSpacing(8)
         layout.addWidget(QLabel("MEMBERS", objectName="sectionLabel"))
         if not identities:
@@ -776,6 +780,8 @@ class MainWindow(QMainWindow):
         self.confirm: Callable[[str], bool] = self.ask_to_confirm
         # Ask the user for a chat export to import.
         self.pick_export: Callable[[], Path | None] = self.ask_for_export
+        # Ask the user for the topic of a room. It gets the old topic.
+        self.ask_topic: Callable[[str], str | None] = self.ask_for_topic
         # Ask the user for the new text of a message. It gets the old text.
         self.ask_text: Callable[[str], str | None] = self.ask_for_text
         # Ask the user where to save an export. It gets a suggested name.
@@ -898,9 +904,16 @@ class MainWindow(QMainWindow):
         heading.setSpacing(2)
         self.title = QLabel(objectName="title")
         self.subtitle = QLabel(objectName="subtitle")
+        self.topic_label = QLabel(objectName="subtitle", wordWrap=True)
         heading.addWidget(self.title)
         heading.addWidget(self.subtitle)
+        heading.addWidget(self.topic_label)
         head.addLayout(heading, 1)
+        self.topic_button = QPushButton("Topic...")
+        self.topic_button.setToolTip("What happens in the room now. The identities know it.")
+        self.topic_button.clicked.connect(self.change_topic)
+        head.addWidget(self.topic_button, alignment=Qt.AlignmentFlag.AlignVCenter)
+        head.addSpacing(6)
         self.export_button = QPushButton("Export")
         self.export_button.setToolTip("Save the room as a text file, or copy it as text")
         self.export_button.clicked.connect(self.export_menu)
@@ -1092,6 +1105,22 @@ class MainWindow(QMainWindow):
         chat.layout().addSpacing(6)
         chat.layout().addWidget(import_button, alignment=Qt.AlignmentFlag.AlignLeft)
         column.addWidget(chat)
+
+        lore = SettingsPage.card("Group lore", "What the whole group knows: who is who, running jokes, what "
+                                               "happened. Each identity reads it. It stays in identities/lore.md.")
+        self.lore_editor = QPlainTextEdit()
+        self.lore_editor.setMinimumHeight(120)
+        self.lore_editor.setPlaceholderText("For example: Stiven writes Soultale. Jackie lives in Belgium.")
+        self.lore_note = QLabel(objectName="hint")
+        save_lore = QPushButton("Save lore", objectName="primary")
+        save_lore.clicked.connect(self.save_lore)
+        lore_actions = QHBoxLayout()
+        lore_actions.addWidget(self.lore_note, 1)
+        lore_actions.addWidget(save_lore)
+        lore.layout().addWidget(self.lore_editor)
+        lore.layout().addSpacing(6)
+        lore.layout().addLayout(lore_actions)
+        column.addWidget(lore)
         column.addStretch(1)
         editor.setWidget(body)
         self.identity_editor = editor
@@ -1101,6 +1130,8 @@ class MainWindow(QMainWindow):
 
     def refresh_identities(self, select: str | None = None) -> None:
         select = select or self.editing_id
+        self.lore_editor.setPlainText(self.engine.lore())
+        self.lore_note.setText("")
         identities, errors = self.engine.identities()
         self.identity_list.blockSignals(True)
         self.identity_list.clear()
@@ -1253,6 +1284,27 @@ class MainWindow(QMainWindow):
         editing.save_chat(directory, messages, names[choice], replace=replace_chat)
         self.refresh_identities(identity_id)
         self.identity_note.setText(f"Imported {len(messages)} messages from {path.name}.")
+
+    # Topic and lore
+
+    def ask_for_topic(self, old: str) -> str | None:
+        text, ok = QInputDialog.getText(self, "Topic", "What happens in the room now?", text=old)
+        return text if ok else None
+
+    def change_topic(self) -> None:
+        if self.room is None or self.busy:
+            return
+        topic = self.ask_topic(self.room.topic)
+        if topic is None:
+            return
+        room = self.engine.store.get(self.room.id)
+        self.engine.set_topic(room, topic)
+        self.room = room
+        self.show_room(room)
+
+    def save_lore(self) -> None:
+        self.engine.save_lore(self.lore_editor.toPlainText())
+        self.lore_note.setText("Saved. Each identity knows it from the next reply.")
 
     # Message actions
 
@@ -1553,6 +1605,8 @@ class MainWindow(QMainWindow):
         """Draw the header and the messages of the room again."""
         self.title.setText(room.name)
         self.subtitle.setText("With " + self.names(room.members))
+        self.topic_label.setText(f"Topic: {room.topic}" if room.topic else "")
+        self.topic_label.setVisible(bool(room.topic))
         while self.room_picture_holder.count():
             detach(self.room_picture_holder.takeAt(0).widget())
         first = room.members[0] if room.members else room.id
@@ -1583,7 +1637,7 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         try:
-            room = self.engine.create_room(dialog.name.text(), dialog.selected())
+            room = self.engine.create_room(dialog.name.text(), dialog.selected(), dialog.topic.text())
         except EngineError as error:
             QMessageBox.warning(self, "mimikr", str(error))
             return

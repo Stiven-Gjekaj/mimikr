@@ -709,3 +709,25 @@ def test_start_with_no_model_file_says_what_to_do(application, tmp_path):
     window = make_window(tmp_path, FakeModel())
     window.start_local_servers()
     assert "Choose a chat model file" in window.settings.server_status.text()
+
+
+def test_change_the_topic_of_a_room(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    room = window.engine.create_room("r", ["ana"])
+    window.select_room(room.id)
+    assert window.topic_label.isHidden()
+    window.ask_topic = lambda old: "exams week"
+    window.change_topic()
+    assert window.engine.store.get(room.id).topic == "exams week"
+    assert window.topic_label.text() == "Topic: exams week"
+
+
+def test_save_the_group_lore_from_the_identities_page(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    window.show_identities(select="ana")
+    window.lore_editor.setPlainText("Ana draws. Bo is always late.")
+    window.save_lore()
+    assert (tmp_path / "identities" / "lore.md").read_text(encoding="utf-8") == "Ana draws. Bo is always late.\n"
+    assert window.engine.lore() == "Ana draws. Bo is always late."
+    window.show_identities(select="ana")
+    assert window.lore_editor.toPlainText() == "Ana draws. Bo is always late."
