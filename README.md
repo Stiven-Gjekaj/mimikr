@@ -44,6 +44,12 @@ _A short description, a transcript, and a model on your own computer._
 > [docs/milestones.md](docs/milestones.md) holds each decision and the reason
 > for it.
 
+<p align="center">
+  <img src="assets/window.png" alt="A room with two invented identities, June and Sam, in the dark theme" width="820">
+</p>
+
+<p align="center"><sub>Invented identities and a stand-in model. <code>scripts/make-screenshots.py</code> makes the image.</sub></p>
+
 ---
 
 ## Overview
@@ -359,7 +365,16 @@ flowchart LR
 
 ## Settings
 
-Put the settings in `mimikr.toml` in the working directory, or set the
+Click **Settings** at the bottom of the sidebar, or press Cmd+, on macOS.
+A change of the look shows at once. **Save** writes `mimikr.toml` and connects
+to the new servers. **Test connection** asks the chat server for its models,
+and asks the embedding server for one embedding, before you save.
+
+<p align="center">
+  <img src="assets/settings.png" alt="The settings page, in the light theme" width="820">
+</p>
+
+You can also edit `mimikr.toml` in the working directory, or set the
 environment variables. The environment variables have priority.
 
 | Key | Variable | Default |
@@ -372,6 +387,9 @@ environment variables. The environment variables have priority.
 | `examples` | `MIMIKR_EXAMPLES` | `recent`. Or `similar`, which needs the embedding model. |
 | `embedding_model` | `MIMIKR_EMBEDDING_MODEL` | `nomic-embed-text` |
 | `embedding_url` | `MIMIKR_EMBEDDING_URL` | empty, which means the server in `base_url` |
+| `theme` | `MIMIKR_THEME` | `system`. Or `light` or `dark`. |
+| `accent` | `MIMIKR_ACCENT` | `violet`. Or `blue`, `teal`, `green`, `orange`, `pink`, or a `#rrggbb` color. |
+| `font_size` | `MIMIKR_FONT_SIZE` | `14`, from 12 to 18 |
 | `identities_dir` | `MIMIKR_IDENTITIES_DIR` | `identities` |
 | `data_dir` | `MIMIKR_DATA_DIR` | `data` |
 
