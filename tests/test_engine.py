@@ -30,7 +30,8 @@ def make_engine(tmp_path, model: FakeModel, people=("ana", "bo")) -> RoomEngine:
         directory = tmp_path / "identities" / person
         directory.mkdir(parents=True)
         (directory / "personality.md").write_text(f"This is {person}.", encoding="utf-8")
-    config = Config(identities_dir=tmp_path / "identities", data_dir=tmp_path / "data", model="default-model")
+    config = Config(identities_dir=tmp_path / "identities", data_dir=tmp_path / "data", model="default-model",
+                    mode="chat")
     return RoomEngine(config, model)
 
 

@@ -35,7 +35,7 @@ def make_config(tmp_path, settings: str | None = None) -> Config:
     if settings:
         (directory / "identity.toml").write_text(settings, encoding="utf-8")
     return Config(identities_dir=tmp_path / "identities", data_dir=tmp_path / "data",
-                  model="default-model", embedding_model="embedder")
+                  model="default-model", embedding_model="embedder", mode="chat")
 
 
 def test_eval_prints_the_scores_and_saves_the_report(tmp_path, capsys):

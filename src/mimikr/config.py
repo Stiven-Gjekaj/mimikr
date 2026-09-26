@@ -38,9 +38,10 @@ class Config:
     turn_taking: str = "smart"
     # Send each reply after about the time that a person takes to write it.
     realistic_timing: bool = True
-    # How the model writes: "chat" sends chat messages to an instruct model, and
-    # "continue" gives a chat log to a base model to continue.
-    mode: str = "chat"
+    # How the model writes: "continue" gives a chat log to the model to
+    # continue, and "chat" sends chat messages to an instruct model. In P4,
+    # "continue" scored 0.92 for style and "chat" 0.71. See docs/milestones.md.
+    mode: str = "continue"
     # How the prompt chooses examples from the transcript: "recent" takes the
     # end of the transcript, and "similar" takes the exchanges most similar to
     # the current message. "similar" needs the embedding model.

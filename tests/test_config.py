@@ -36,8 +36,8 @@ def test_the_examples_are_recent_by_default_and_the_environment_can_change_them(
     assert load_config(tmp_path / "missing.toml", environ={"MIMIKR_EXAMPLES": "similar"}).examples == "similar"
 
 
-def test_the_mode_is_chat_by_default():
-    assert Config().mode == "chat"
+def test_the_mode_is_continue_by_default():
+    assert Config().mode == "continue"
 
 
 def test_the_look_has_defaults_and_the_file_can_change_it(tmp_path):
