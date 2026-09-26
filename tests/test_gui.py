@@ -525,3 +525,16 @@ def test_stop_during_a_pause_still_shows_the_saved_messages(application, tmp_pat
     assert time.monotonic() - started < 2
     assert window.view.texts() == ["one"]
     assert window.status.text() == "Stopped."
+
+
+def test_the_reply_settings_save_turn_taking_style_and_timing(application, tmp_path):
+    from mimikr.config import load_config
+
+    window = make_window(tmp_path, FakeModel())
+    page = window.settings
+    page.turn_taking.setCurrentIndex(page.turn_taking.findData("rotate"))
+    page.enforce_style.setChecked(False)
+    page.realistic_timing.setChecked(True)
+    page.save_button.click()
+    saved = load_config(tmp_path / "mimikr.toml", environ={})
+    assert (saved.turn_taking, saved.enforce_style, saved.realistic_timing) == ("rotate", False, True)

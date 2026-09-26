@@ -26,6 +26,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -489,6 +490,14 @@ class SettingsPage(QScrollArea):
         form.addRow(self.label("Mode"), self.mode)
         form.addRow(self.label("Examples"), self.examples)
         form.addRow(self.label("Temperature"), self.temperature)
+        self.turn_taking = QComboBox()
+        self.turn_taking.addItem("Smart: the member that is named, or a random one", "smart")
+        self.turn_taking.addItem("Rotate: the order of the room", "rotate")
+        form.addRow(self.label("Next speaker"), self.turn_taking)
+        self.enforce_style = QCheckBox("Remove capitals, periods and emoji that the person never uses")
+        form.addRow(self.label("Match the habits"), self.enforce_style)
+        self.realistic_timing = QCheckBox("Wait about the time that a person takes to write each message")
+        form.addRow(self.label("Realistic timing"), self.realistic_timing)
         column.addWidget(replies)
 
         pictures = self.card("Pictures", "A picture for each identity. The change shows at once, with no Save. "
@@ -564,6 +573,9 @@ class SettingsPage(QScrollArea):
         self.mode.setCurrentIndex(max(0, self.mode.findData(config.mode)))
         self.examples.setCurrentIndex(max(0, self.examples.findData(config.examples)))
         self.temperature.setValue(config.temperature)
+        self.turn_taking.setCurrentIndex(max(0, self.turn_taking.findData(config.turn_taking)))
+        self.enforce_style.setChecked(config.enforce_style)
+        self.realistic_timing.setChecked(config.realistic_timing)
         self.accent_error.setText("")
         self.accent_error.hide()
 
@@ -628,6 +640,9 @@ class SettingsPage(QScrollArea):
         config.mode = self.mode.currentData()
         config.examples = self.examples.currentData()
         config.temperature = round(self.temperature.value(), 2)
+        config.turn_taking = self.turn_taking.currentData()
+        config.enforce_style = self.enforce_style.isChecked()
+        config.realistic_timing = self.realistic_timing.isChecked()
         self.saved_config = replace(config)
         self.load(config)
         self.saved.emit()
