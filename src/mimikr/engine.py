@@ -3,6 +3,8 @@
 The engine does not know about the GUI. The GUI calls it from a worker thread.
 """
 
+from collections.abc import Callable
+
 from mimikr import prompt
 from mimikr.config import Config
 from mimikr.examples import Embedder, Exchange, ExampleIndex, recent_query
@@ -57,8 +59,10 @@ class RoomEngine:
         query = recent_query([(message.author == identity.id, message.text) for message in room.messages])
         return index.select(query, self.embed, prompt.EXAMPLE_BUDGET)
 
-    def speak(self, room: Room, member: str) -> list[RoomMessage]:
+    def speak(self, room: Room, member: str, on_text: Callable[[str], None] | None = None) -> list[RoomMessage]:
         """Let one member write. Save and return the new messages.
+
+        on_text receives the text so far while the model writes.
 
         Raise EngineError or LLMError if the member cannot write.
         """
@@ -73,6 +77,7 @@ class RoomEngine:
                 model=identity.model or self.config.model,
                 temperature=identity.temperature if identity.temperature is not None else self.config.temperature,
                 mode=identity.mode or self.config.mode,
+                on_text=on_text,
             )
         except ModeError as error:
             raise EngineError(str(error)) from None

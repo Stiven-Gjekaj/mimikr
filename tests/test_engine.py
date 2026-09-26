@@ -145,3 +145,35 @@ def test_an_unknown_mode_is_an_error(tmp_path):
     engine.config.mode = "poetry"
     with pytest.raises(EngineError, match="'chat' or 'continue'"):
         engine.speak(engine.create_room("r", ["ana"]), "ana")
+
+
+class StreamingModel(FakeModel):
+    def stream_complete(self, messages, model, temperature):
+        yield from ["Ana: ", "lol", " ok"]
+
+    def stream_continue(self, prompt, model, temperature, stop):
+        yield from [" su", "re\nYou: x"]
+
+
+def test_speak_shows_the_text_while_the_model_writes(tmp_path):
+    engine = make_engine(tmp_path, StreamingModel(), people=("ana",))
+    seen = []
+    new = engine.speak(engine.create_room("r", ["ana"]), "ana", on_text=seen.append)
+    assert seen == ["", "lol", "lol ok"]
+    assert [m.text for m in new] == ["lol ok"]
+
+
+def test_speak_streams_in_the_continue_mode_and_hides_other_speakers(tmp_path):
+    engine = make_engine(tmp_path, StreamingModel(), people=("ana",))
+    engine.config.mode = "continue"
+    seen = []
+    new = engine.speak(engine.create_room("r", ["ana"]), "ana", on_text=seen.append)
+    assert seen == ["su", "sure"]
+    assert [m.text for m in new] == ["sure"]
+
+
+def test_a_model_that_cannot_stream_still_replies(tmp_path):
+    engine = make_engine(tmp_path, FakeModel(reply="hey"), people=("ana",))
+    seen = []
+    assert [m.text for m in engine.speak(engine.create_room("r", ["ana"]), "ana", on_text=seen.append)] == ["hey"]
+    assert seen == []
