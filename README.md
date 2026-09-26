@@ -268,6 +268,43 @@ The count of messages for each name tells you which name to put in `speaker`.
 
 mimikr keeps each room as a JSON file in `data/rooms/`.
 
+### Pictures
+
+- For an identity: open **Settings**, go to **Pictures**, and click
+  **Choose...**.
+- For a room: click the round picture at the left of the name of the room.
+
+mimikr cuts the middle square of the image, makes it 256 pixels wide, and keeps
+a copy in `data/avatars/`. It writes nothing into the directory of an identity.
+You can also put `avatar.png` or `avatar.jpg` into the directory of an identity
+by hand. A picture that you choose in the window has priority. With no picture,
+mimikr shows the initials in a color.
+
+### Export a room
+
+Click **Export** in the header of the room:
+
+- **Save as text file...** writes a `.txt` file. Cmd+E does the same.
+- **Copy as text** puts the same text on the clipboard.
+
+```
+# Late night
+# With June and Sam.
+# Exported from mimikr on 2026-09-26 16:50.
+# A language model wrote the messages of June and Sam.
+# June and Sam did not write them.
+
+[2026-09-26 15:00] You: anyone up?
+[2026-09-26 15:01] June: yes
+  why
+[2026-09-26 15:02] Sam: lol
+```
+
+That text is the output of `tests/test_export.py`, with invented people.
+The first lines are always there, because a reader must not think that the real
+people wrote the messages. The lines have the form of `chat.md`, so
+`mimikr import` and the transcript reader can read an export again.
+
 ---
 
 ## Score an identity
