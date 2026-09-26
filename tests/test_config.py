@@ -30,3 +30,7 @@ def test_the_embeddings_use_the_chat_server_when_no_embedding_url_is_set():
 def test_the_examples_are_recent_by_default_and_the_environment_can_change_them(tmp_path):
     assert load_config(tmp_path / "missing.toml", environ={}).examples == "recent"
     assert load_config(tmp_path / "missing.toml", environ={"MIMIKR_EXAMPLES": "similar"}).examples == "similar"
+
+
+def test_the_mode_is_chat_by_default():
+    assert Config().mode == "chat"

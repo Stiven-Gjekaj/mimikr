@@ -5,7 +5,7 @@ An identity directory holds these files:
 - `personality.md`: a short description of the person. This file is necessary.
 - `chat.md`: a transcript of messages from the person. This file is optional.
 - `identity.toml`: optional settings. The keys are `display_name`, `speaker`,
-  `model` and `temperature`.
+  `model`, `temperature` and `mode`.
 
 The `speaker` is the name of the person in `chat.md`.
 If `speaker` is not set, the loader uses the display name.
@@ -34,6 +34,7 @@ class Identity:
     style: StyleProfile = field(default_factory=StyleProfile)
     model: str | None = None
     temperature: float | None = None
+    mode: str | None = None
 
 
 def load_identity(directory: Path) -> Identity:
@@ -53,6 +54,7 @@ def load_identity(directory: Path) -> Identity:
         personality=personality_file.read_text(encoding="utf-8").strip(),
         model=settings.get("model"),
         temperature=settings.get("temperature"),
+        mode=settings.get("mode"),
     )
 
     chat_file = directory / "chat.md"

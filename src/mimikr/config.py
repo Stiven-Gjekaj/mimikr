@@ -20,6 +20,9 @@ class Config:
     api_key: str = "local"
     model: str = "llama3.1"
     temperature: float = 0.8
+    # How the model writes: "chat" sends chat messages to an instruct model, and
+    # "continue" gives a chat log to a base model to continue.
+    mode: str = "chat"
     # How the prompt chooses examples from the transcript: "recent" takes the
     # end of the transcript, and "similar" takes the exchanges most similar to
     # the current message. "similar" needs the embedding model.

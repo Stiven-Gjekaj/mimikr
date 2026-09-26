@@ -60,3 +60,9 @@ def test_list_keeps_the_good_identities_and_reports_the_bad_ones(tmp_path):
 
 def test_list_of_a_missing_directory_is_empty(tmp_path):
     assert list_identities(tmp_path / "missing") == ({}, {})
+
+
+def test_the_settings_file_sets_the_mode(tmp_path):
+    identity = load_identity(make_identity(tmp_path, "ana", settings='mode = "continue"\n'))
+    assert identity.mode == "continue"
+    assert load_identity(make_identity(tmp_path, "bo")).mode is None
