@@ -290,3 +290,107 @@ export is the easiest way to do that by accident.
 - **HTML and PDF** lost. They look better, but a person who shares a chat
   pastes text, and plain text needs no viewer.
 - **An export with no header** lost, for the reason above.
+
+### A budget for the room
+
+The prompt holds the most recent messages of the room that fit in 12000
+characters, about 3000 tokens. A note says that earlier messages are not shown.
+With the examples and the reply, the prompt fits a context of 8192 tokens, and
+the local servers get `-c 8192`.
+
+Before this, the prompt held the whole room. A long room would pass the
+context of the model, and the server would cut the prompt or refuse it.
+
+- **A summary of the older messages** lost for now. It costs one more call to
+  the model for each reply, and a small model can put facts into a summary that
+  the room never had.
+
+### Keep the clear habits of the person
+
+With 5 messages or more in the transcript, a reply loses what the person almost
+never does: a capital at the start (90 percent or more start small), a period at
+the end (5 percent or less end with one), and emoji (none). "I", "I'm" and
+words in capitals keep their capitals, and "..." stays.
+
+The setting is on by default. It changes only what the transcript shows to be a
+habit, and the style score measures the result.
+
+- **Only the instructions in the prompt** lost. A small model often forgets
+  "do not end with a period" by the second sentence.
+
+### The next speaker
+
+A member whose name is in the last message speaks next. Otherwise a random
+member speaks, but never the member that spoke last. `turn_taking = "rotate"`
+keeps the order of the room.
+
+- **A weight for how much each person talks** lost. The size of a transcript
+  says how much of a chat the user exported, and not how much the person talks.
+
+### The menu of a message
+
+Copy, edit, delete, write again, and like. **Write again** removes the whole last
+turn of the identity, and not only one message, because the turn was one reply.
+
+A liked reply becomes an example in the later prompts of that identity, with
+the message before it, in a budget of 1500 characters. The budget is small on
+purpose: the model wrote a liked reply, and too many of them teach the model to
+copy itself instead of the person.
+
+### Realistic timing
+
+With the setting on, the text does not show while the model writes, and each
+message comes after about the time that a person takes to write it: 0.6 seconds
+and 35 milliseconds for each character, 5 seconds at most. The time that the
+model took counts. The setting is on by default, because the window is for
+conversation. Stop works during a wait.
+
+### Search
+
+Search looks for the text in the names of the rooms, the names of the members,
+and the messages, with no case. It reads the room files each time.
+
+- **An index for search** lost. One person has some hundreds of rooms at most,
+  and a loop over the files is fast enough.
+
+### An identity editor that writes the files
+
+The editor writes `personality.md`, `identity.toml` and `chat.md`, but only when
+the user saves or imports. An import asks which name in the chat is the person,
+and asks before it writes over a `chat.md` that exists. It reads the exports of
+WhatsApp, Telegram Desktop and DiscordChatExporter, and plain `chat.md` files.
+
+The rule "the Software reads the files of an identity only" changed to "the
+Software writes them only for an action of the user". The editor is the reason:
+a person who has no terminal must still make an identity.
+
+### llama.cpp from the window
+
+The settings page starts one `llama-server` for the chat model and one for the
+embedding model, on 127.0.0.1 only, with a context of 8192 tokens by default.
+The output goes to `data/logs/`. mimikr stops the servers when the window
+closes. On this Mac, the nomic server answered 13.8 seconds after the start.
+
+### The macOS application
+
+PyInstaller builds `mimikr.app`. The application keeps its settings, identities
+and rooms in `~/Documents/mimikr`, because a program that starts from the Dock
+has `/` as its working directory. `MIMIKR_HOME` changes the place.
+
+The Qt libraries in the application ask for macOS 13 or later, as their
+`LC_BUILD_VERSION` says, so the cask asks for Ventura. The build is for Apple
+silicon only.
+
+A tag starts `release.yml`. It builds the application, starts it from the zip,
+and opens a draft release. `scripts/homebrew-cask.sh` writes the cask for the
+tap, and a person puts it into the tap after reading the draft.
+
+- **Briefcase** lost. It is a good tool, but PyInstaller is the more common one
+  for PySide6, and it needs no change to the layout of the project.
+- **A signed and notarized application** lost for now. It needs a paid Apple
+  certificate. The README says how to take the quarantine mark off.
+
+### CI on three systems
+
+`ci.yml` runs the tests and `mimikr check` on macOS, Linux and Windows. The
+window tests need no screen. Linux needs the libraries that Qt loads.
