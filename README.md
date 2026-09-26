@@ -31,13 +31,14 @@ _A short description, a transcript, and a model on your own computer._
 ---
 
 > [!NOTE]
-> **The code of each phase is built, and P4 waits for a real run.**
+> **Each phase is done, and version 1.0 is out.**
 > The window shows replies while the model writes, the members can talk for a
 > number of turns, and `mimikr import` reads WhatsApp, Telegram and Discord.
 > The window edits identities, starts llama.cpp, and builds as a macOS app.
 > `mimikr eval` scores the chat mode and the continuation mode, with recent or
 > similar examples. The tests prove each part with a fake model.
-> No real model has run the score yet, so the defaults are not proven.
+> The score chose the defaults: on five real people with Mistral Nemo, the
+> continue mode scored 0.92 for style and the chat mode 0.71.
 > [docs/roadmap.md](docs/roadmap.md) says what comes next, and
 > [docs/milestones.md](docs/milestones.md) holds each decision and the reason
 > for it.
@@ -109,12 +110,12 @@ On a Mac with Apple silicon and macOS 13 or later, with Homebrew:
 brew install --cask --no-quarantine stiven-gjekaj/tap/mimikr
 ```
 
-Or download `mimikr-1.0.0-macos-arm64.zip` from the
+Or download the zip from the
 [latest release](https://github.com/Stiven-Gjekaj/mimikr/releases/latest).
 Each release has build provenance, and this command checks it:
 
 ```bash
-gh attestation verify mimikr-1.0.0-macos-arm64.zip --repo Stiven-Gjekaj/mimikr
+gh attestation verify mimikr-*-macos-arm64.zip --repo Stiven-Gjekaj/mimikr
 ```
 
 No paid certificate signs the application, so macOS can refuse to open a copy
@@ -447,9 +448,10 @@ flowchart LR
 3. In the **chat** mode, the prompt holds the description, the style as plain
    instructions, and the examples. The messages of the identity go to the model
    as its own, and the messages of each other member go with the name first.
-4. In the **continue** mode, the prompt is a plain chat log that ends with the
-   name of the person. A base model writes the next lines. It has no voice of
-   an assistant to hide, because it never learned one.
+4. In the **continue** mode, the default, the prompt is a plain chat log that
+   ends with the name of the person, and the model writes the next lines. An
+   instruct model does this too, and most of its voice of an assistant goes
+   away, because it continues a document and does not answer a question.
 5. mimikr removes a name that the model puts before its reply. If the person
    sends short messages in a row, each line becomes one message.
 
@@ -482,7 +484,7 @@ the working directory otherwise. A relative folder is relative to the file.
 | `api_key` | `MIMIKR_API_KEY` | `local` |
 | `model` | `MIMIKR_MODEL` | `llama3.1` |
 | `temperature` | `MIMIKR_TEMPERATURE` | `0.8` |
-| `mode` | `MIMIKR_MODE` | `chat`. Or `continue`, for a base model. |
+| `mode` | `MIMIKR_MODE` | `continue`. Or `chat`, which sends chat messages to an instruct model. |
 | `examples` | `MIMIKR_EXAMPLES` | `recent`. Or `similar`, which needs the embedding model. |
 | `embedding_model` | `MIMIKR_EMBEDDING_MODEL` | `nomic-embed-text` |
 | `embedding_url` | `MIMIKR_EMBEDDING_URL` | empty, which means the server in `base_url` |
