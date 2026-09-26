@@ -143,6 +143,19 @@ def score_meaning(real_turns: list[list[str]], generated_turns: list[list[str]],
     return MeaningScore(score=sum(similarities) / len(similarities), baseline=baseline)
 
 
+def repetition(turns: list[list[str]]) -> float:
+    """Return the share of messages that repeat an earlier message of the list, with no case."""
+    seen: set[str] = set()
+    repeats = total = 0
+    for turn in turns:
+        for text in turn:
+            key = " ".join(text.casefold().split())
+            total += 1
+            repeats += key in seen
+            seen.add(key)
+    return repeats / total if total else 0.0
+
+
 @dataclass
 class CaseResult:
     # The last messages before the reply, as 'Name: text'.
@@ -161,6 +174,8 @@ class Report:
     training_messages: int
     style: StyleScore
     meaning: MeaningScore | None
+    # The share of messages that repeat an earlier one: of the real replies, and of the model.
+    repeats: tuple[float, float] = (0.0, 0.0)
     results: list[CaseResult] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -250,5 +265,6 @@ def run_evaluation(
         training_messages=len(training),
         style=score_style(real_turns, generated_turns),
         meaning=score_meaning(real_turns, generated_turns, embed) if embed else None,
+        repeats=(repetition(real_turns), repetition(generated_turns)),
         results=results,
     )

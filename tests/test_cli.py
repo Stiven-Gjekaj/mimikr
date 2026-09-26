@@ -47,6 +47,7 @@ def test_eval_prints_the_scores_and_saves_the_report(tmp_path, capsys):
     assert "2 test replies" in out
     assert "Warning: a score from fewer than 10 test replies is not reliable." in out
     assert "style    " in out and "meaning  " in out
+    assert "repeats  real 0.00, model 0.50" in out
     assert "  real:  answer 9" in out and "  model: ok sure" in out
     [saved] = (tmp_path / "data" / "evals").glob("sam-default-model-chat-recent-*.json")
     report = json.loads(saved.read_text(encoding="utf-8"))

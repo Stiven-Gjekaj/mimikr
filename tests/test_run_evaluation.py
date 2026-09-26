@@ -3,7 +3,7 @@ of a different person get a worse one."""
 
 import pytest
 
-from mimikr.evaluate import EvaluationError, run_evaluation
+from mimikr.evaluate import EvaluationError, repetition, run_evaluation
 from mimikr.identity import Identity
 from mimikr.style import build_profile
 from mimikr.transcript import Message
@@ -156,3 +156,13 @@ def test_the_continue_mode_gives_the_real_replies_the_best_score():
 def test_an_unknown_mode_cannot_be_scored():
     with pytest.raises(EvaluationError, match="'chat' or 'continue'"):
         run_evaluation(sam(), Stranger(), model="m", temperature=0.5, mode="poetry")
+
+
+def test_repetition_counts_the_messages_that_repeat_an_earlier_one():
+    assert repetition([["bet"], ["Bet", "ok"], ["bet ", "fine"]]) == 2 / 5
+    assert repetition([]) == 0.0
+
+
+def test_the_report_holds_the_repetition_of_the_real_and_the_model_replies():
+    report = run_evaluation(sam(), Stranger(), model="m", temperature=0.5)
+    assert report.repeats == (0.0, 5 / 6)

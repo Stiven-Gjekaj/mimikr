@@ -58,6 +58,8 @@ def print_report(report: Report, show: bool) -> None:
     for name in STYLE_FEATURES:
         real, generated = report.style.features[name]
         print(f"  {name:<20}{real:>8.2f}{generated:>8.2f}")
+    real_repeats, model_repeats = report.repeats
+    print(f"repeats  real {real_repeats:.2f}, model {model_repeats:.2f}   (the share of replies that repeat an earlier one)")
     if report.meaning is None:
         print("meaning  not measured")
     else:
