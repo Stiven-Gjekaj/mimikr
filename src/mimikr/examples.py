@@ -5,8 +5,11 @@ just before it. The messages before the turn are the query of the exchange:
 the text that a new message must be similar to.
 """
 
+import hashlib
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from mimikr.transcript import Message, turn_starts
 from mimikr.vectors import cosine
@@ -65,6 +68,29 @@ class ExampleIndex:
     def build(cls, transcript: list[Message], speaker: str, embed: Embedder) -> "ExampleIndex":
         exchanges = cut_exchanges(transcript, speaker)
         return cls(exchanges, embed_all([exchange.query for exchange in exchanges], embed))
+
+    @classmethod
+    def cached(cls, transcript: list[Message], speaker: str, embed: Embedder, path: Path,
+               model: str) -> "ExampleIndex":
+        """Load the embeddings from the file if the transcript and the model are the same.
+
+        Otherwise embed the queries again, and write the file.
+        """
+        exchanges = cut_exchanges(transcript, speaker)
+        source = json.dumps([model, speaker, [[m.speaker, m.text] for m in transcript]], ensure_ascii=False)
+        key = hashlib.sha256(source.encode()).hexdigest()
+        try:
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            if saved["key"] == key and len(saved["vectors"]) == len(exchanges):
+                return cls(exchanges, saved["vectors"])
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        vectors = embed_all([exchange.query for exchange in exchanges], embed)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"key": key, "vectors": vectors}), encoding="utf-8")
+        temporary.replace(path)
+        return cls(exchanges, vectors)
 
     def select(self, query: str, embed: Embedder, budget: int) -> list[Exchange]:
         """Return the exchanges most similar to the query that fit the budget.

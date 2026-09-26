@@ -64,3 +64,31 @@ def test_the_query_is_the_last_messages_after_the_last_message_of_the_identity()
     assert recent_query(messages) == "a\nb"
     assert recent_query([(False, "a"), (True, "mine")]) == ""
     assert recent_query([(False, str(n)) for n in range(6)], lead=2) == "4\n5"
+
+
+def test_the_cache_embeds_one_time_for_the_same_transcript_and_model(tmp_path):
+    embed = WordEmbedder()
+    path = tmp_path / "index" / "sam.json"
+    first = ExampleIndex.cached(TOPICS, "Sam", embed, path, model="e")
+    second = ExampleIndex.cached(TOPICS, "Sam", embed, path, model="e")
+    assert len(embed.calls) == 1
+    assert second.vectors == first.vectors
+
+
+def test_the_cache_embeds_again_when_the_transcript_or_the_model_changes(tmp_path):
+    embed = WordEmbedder()
+    path = tmp_path / "sam.json"
+    ExampleIndex.cached(TOPICS, "Sam", embed, path, model="e")
+    ExampleIndex.cached(TOPICS + chat("June: one more", "Sam: ok"), "Sam", embed, path, model="e")
+    ExampleIndex.cached(TOPICS, "Sam", embed, path, model="other")
+    assert len(embed.calls) == 3
+
+
+def test_a_damaged_cache_file_is_made_again(tmp_path):
+    embed = WordEmbedder()
+    path = tmp_path / "sam.json"
+    path.write_text("{not json", encoding="utf-8")
+    index = ExampleIndex.cached(TOPICS, "Sam", embed, path, model="e")
+    assert len(index.vectors) == 4
+    assert ExampleIndex.cached(TOPICS, "Sam", embed, path, model="e").vectors == index.vectors
+    assert len(embed.calls) == 1
