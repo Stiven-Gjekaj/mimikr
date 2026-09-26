@@ -29,6 +29,8 @@ class Config:
     enforce_style: bool = True
     # How a room chooses the next speaker: "smart" or "rotate". See engine.next_speaker.
     turn_taking: str = "smart"
+    # Send each reply after about the time that a person takes to write it.
+    realistic_timing: bool = True
     # How the model writes: "chat" sends chat messages to an instruct model, and
     # "continue" gives a chat log to a base model to continue.
     mode: str = "chat"

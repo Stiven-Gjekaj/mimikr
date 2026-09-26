@@ -35,7 +35,7 @@ def make_window(tmp_path, model: FakeModel, reconnect=None) -> MainWindow:
         directory = tmp_path / "identities" / person
         directory.mkdir(parents=True)
         (directory / "personality.md").write_text(f"This is {person}.", encoding="utf-8")
-    config = Config(identities_dir=tmp_path / "identities", data_dir=tmp_path / "data")
+    config = Config(identities_dir=tmp_path / "identities", data_dir=tmp_path / "data", realistic_timing=False)
     return MainWindow(RoomEngine(config, model), config_path=tmp_path / "mimikr.toml", reconnect=reconnect)
 
 
@@ -487,3 +487,41 @@ def test_copy_puts_one_message_on_the_clipboard(application, tmp_path):
     window, room = room_with_reply(application, tmp_path)
     window.message_action("copy", room.messages[-1].id)
     assert QGuiApplication.clipboard().text() == "hey"
+
+
+def test_realistic_timing_waits_and_shows_no_draft(application, tmp_path, monkeypatch):
+    waits = []
+    monkeypatch.setattr("mimikr.gui.typing_seconds", lambda text: waits.append(text) or 0.05)
+    window = make_window(tmp_path, StreamingModel())
+    window.engine.config.realistic_timing = True
+    drafts = []
+    window.bridge.partial.connect(lambda *args: drafts.append(args))
+    room = window.engine.create_room("r", ["ana"])
+    window.select_room(room.id)
+    window.next_speaker()
+    wait_until_idle(application, window)
+    # With no draft to show, the window does not ask for the stream.
+    assert drafts == []
+    assert waits == ["hello"]
+    assert window.view.texts() == ["hello"]
+
+
+def test_stop_during_a_pause_still_shows_the_saved_messages(application, tmp_path, monkeypatch):
+    holder = []
+
+    def slow(text):
+        holder[0].stop_event.set()
+        return 5.0
+
+    monkeypatch.setattr("mimikr.gui.typing_seconds", slow)
+    window = make_window(tmp_path, FakeModel(reply="one"))
+    holder.append(window)
+    window.engine.config.realistic_timing = True
+    room = window.engine.create_room("r", ["ana"])
+    window.select_room(room.id)
+    started = time.monotonic()
+    window.next_speaker()
+    wait_until_idle(application, window)
+    assert time.monotonic() - started < 2
+    assert window.view.texts() == ["one"]
+    assert window.status.text() == "Stopped."

@@ -8,6 +8,7 @@ Only one worker runs at a time.
 import re
 import sys
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import fields, replace
 from pathlib import Path
@@ -150,6 +151,11 @@ def avatar(key: str, name: str, size: int = AVATAR_SIZE, picture: Path | None = 
 
 def system_is_dark() -> bool:
     return QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
+
+
+def typing_seconds(text: str) -> float:
+    """Return about how long a person takes to write the text on a phone."""
+    return min(0.6 + 0.035 * len(text), 5.0)
 
 
 class Stopped(Exception):
@@ -1190,6 +1196,12 @@ class MainWindow(QMainWindow):
         self.set_busy(True)
         self.set_status("")
 
+        realistic = self.engine.config.realistic_timing
+
+        def wait(seconds: float) -> None:
+            if seconds > 0 and stop.wait(seconds):
+                raise Stopped
+
         def work() -> None:
             try:
                 while not stop.is_set():
@@ -1205,7 +1217,14 @@ class MainWindow(QMainWindow):
                             raise Stopped
                         self.bridge.partial.emit(room.id, member, name, text)
 
-                    for message in self.engine.speak(room, member, on_text=on_text):
+                    started = time.monotonic()
+                    # With realistic timing, the text does not show while the
+                    # model writes. A person does not see a message before it is sent.
+                    messages = self.engine.speak(room, member, on_text=None if realistic else on_text)
+                    for number, message in enumerate(messages):
+                        if realistic:
+                            spent = time.monotonic() - started if number == 0 else 0.0
+                            wait(typing_seconds(message.text) - spent)
                         self.bridge.message.emit(room.id, message)
                 if stop.is_set():
                     raise Stopped
@@ -1249,6 +1268,9 @@ class MainWindow(QMainWindow):
             self.view.clear_draft()
             # The worker changed its own copy of the room. Load the saved copy.
             self.room = self.engine.store.get(room_id)
+            # A stop during a pause leaves saved messages that the window did not show yet.
+            if len(self.view.texts()) != len(self.room.messages):
+                self.show_room(self.room)
             if self.status.objectName() != "error" and self.status.text() != "Stopped.":
                 self.set_status("")
 
