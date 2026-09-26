@@ -63,7 +63,7 @@ from mimikr.transcript import TranscriptError, parse_transcript
 from mimikr.export import file_name, room_as_text
 from mimikr.llm import ChatClient, LLMError
 from mimikr.local_servers import LocalServer, ServerError, find_llama_server
-from mimikr.rooms import USER, Room, RoomMessage, matches, search_rooms
+from mimikr.rooms import USER, Room, RoomMessage, matches, quote_of, search_rooms
 from mimikr.servers import check_servers
 
 BUBBLE_WIDTH = 520
@@ -343,7 +343,7 @@ class MessageView(QScrollArea):
             line.addStretch(1)
         return row, bubble
 
-    def add(self, message: RoomMessage) -> None:
+    def add(self, message: RoomMessage, quote: str | None = None) -> None:
         self.clear_draft()
         mine = message.author == USER
         if not mine and message.author != self.last_author:
@@ -351,6 +351,19 @@ class MessageView(QScrollArea):
         elif mine and self.last_author not in (None, USER):
             self.column.addSpacing(10)
         self.last_author = message.author
+        if quote:
+            label = QLabel(f"Reply to {quote}", objectName="replyQuote")
+            label.setTextFormat(Qt.TextFormat.PlainText)
+            line = QHBoxLayout()
+            line.setContentsMargins(0 if mine else AVATAR_SIZE + 8, 4, 0, 0)
+            if mine:
+                line.addStretch(1)
+            line.addWidget(label)
+            if not mine:
+                line.addStretch(1)
+            holder = QWidget()
+            holder.setLayout(line)
+            self.column.addWidget(holder)
         row, bubble = self.bubble_row(message.text, "mine" if mine else "bubble", mine)
         bubble.setProperty("message_id", message.id)
         bubble.setProperty("liked", message.liked)
@@ -957,10 +970,23 @@ class MainWindow(QMainWindow):
         compose.addWidget(self.composer, 1)
         compose.addWidget(self.send_button, alignment=Qt.AlignmentFlag.AlignBottom)
 
+        self.reply_bar = QWidget(objectName="replyBar")
+        reply_line = QHBoxLayout(self.reply_bar)
+        reply_line.setContentsMargins(12, 6, 6, 6)
+        self.reply_label = QLabel(objectName="replyQuote")
+        self.reply_label.setTextFormat(Qt.TextFormat.PlainText)
+        cancel_reply = QPushButton("Cancel", objectName="ghost")
+        cancel_reply.clicked.connect(lambda: self.set_reply(None))
+        reply_line.addWidget(self.reply_label, 1)
+        reply_line.addWidget(cancel_reply)
+        self.reply_bar.hide()
+        self.replying_to: str | None = None
+
         bottom = QVBoxLayout()
         bottom.setContentsMargins(24, 8, 24, 20)
         bottom.setSpacing(10)
         bottom.addWidget(toolbar)
+        bottom.addWidget(self.reply_bar)
         bottom.addWidget(box)
 
         page = QWidget(objectName="page")
@@ -1285,6 +1311,21 @@ class MainWindow(QMainWindow):
         self.refresh_identities(identity_id)
         self.identity_note.setText(f"Imported {len(messages)} messages from {path.name}.")
 
+    # Replies
+
+    def set_reply(self, message_id: str | None) -> None:
+        """Show which message the next message replies to, or hide the bar."""
+        self.replying_to = message_id
+        quote = None
+        if message_id and self.room is not None:
+            quote = quote_of(self.room, RoomMessage(author=USER, name="You", text="", reply_to=message_id))
+        self.reply_label.setText(f"Reply to {quote}" if quote else "")
+        self.reply_bar.setVisible(bool(quote))
+        if quote:
+            self.composer.setFocus()
+        else:
+            self.replying_to = None
+
     # Topic and lore
 
     def ask_for_topic(self, old: str) -> str | None:
@@ -1322,6 +1363,7 @@ class MainWindow(QMainWindow):
             return
         last = self.engine.last_turn(room)
         menu = QMenu(self)
+        menu.addAction("Reply", lambda: self.message_action("reply", message_id))
         menu.addAction("Copy", lambda: self.message_action("copy", message_id))
         menu.addAction("Edit...", lambda: self.message_action("edit", message_id)).setEnabled(not self.busy)
         if message.author in room.members:
@@ -1340,6 +1382,9 @@ class MainWindow(QMainWindow):
             return
         room = self.engine.store.get(self.room.id)
         message = self.engine.find_message(room, message_id)
+        if action == "reply":
+            self.set_reply(message_id)
+            return
         if action == "copy":
             QGuiApplication.clipboard().setText(message.text)
             self.set_status("Copied the message.")
@@ -1603,6 +1648,8 @@ class MainWindow(QMainWindow):
 
     def show_room(self, room: Room) -> None:
         """Draw the header and the messages of the room again."""
+        if self.replying_to and not any(m.id == self.replying_to for m in room.messages):
+            self.set_reply(None)
         self.title.setText(room.name)
         self.subtitle.setText("With " + self.names(room.members))
         self.topic_label.setText(f"Topic: {room.topic}" if room.topic else "")
@@ -1617,7 +1664,7 @@ class MainWindow(QMainWindow):
         query = self.search.text().strip()
         first = None
         for message in room.messages:
-            self.view.add(message)
+            self.view.add(message, quote_of(room, message))
             if query and matches(message.text, query):
                 bubble = self.view.bubble(message.id)
                 bubble.setProperty("match", True)
@@ -1678,8 +1725,13 @@ class MainWindow(QMainWindow):
         if self.room is None or self.busy or not text:
             return
         self.composer.clear()
-        self.view.add(self.engine.post_user_message(self.room, text))
-        members = iter(self.room.members)
+        message = self.engine.post_user_message(self.room, text, reply_to=self.replying_to)
+        self.view.add(message, quote_of(self.room, message))
+        self.set_reply(None)
+        # The author of the message that the user replies to answers first.
+        answered = next((m.author for m in self.room.messages if m.id == message.reply_to), None)
+        order = sorted(self.room.members, key=lambda member: member != answered)
+        members = iter(order)
         self.start(lambda room: next(members, None))
 
     def next_speaker(self) -> None:

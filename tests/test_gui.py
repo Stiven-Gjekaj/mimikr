@@ -731,3 +731,45 @@ def test_save_the_group_lore_from_the_identities_page(application, tmp_path):
     assert window.engine.lore() == "Ana draws. Bo is always late."
     window.show_identities(select="ana")
     assert window.lore_editor.toPlainText() == "Ana draws. Bo is always late."
+
+
+def test_reply_to_a_message_from_its_menu(application, tmp_path):
+    window, room = room_with_reply(application, tmp_path, reply="noodles tonight")
+    reply = room.messages[-1]
+    window.message_action("reply", reply.id)
+    assert not window.reply_bar.isHidden()
+    assert window.reply_label.text() == "Reply to ana: noodles tonight"
+    window.engine.completer.reply = "yes"
+    window.composer.setPlainText("same")
+    window.send()
+    wait_until_idle(application, window)
+    saved = window.engine.store.get(room.id).messages
+    assert saved[2].text == "same" and saved[2].reply_to == reply.id
+    assert window.reply_bar.isHidden()
+    quotes = [label.text() for label in window.view.findChildren(QLabel) if label.objectName() == "replyQuote"]
+    assert quotes == ["Reply to ana: noodles tonight"]
+
+
+def test_cancel_a_reply(application, tmp_path):
+    window, room = room_with_reply(application, tmp_path)
+    window.message_action("reply", room.messages[-1].id)
+    window.set_reply(None)
+    assert window.reply_bar.isHidden() and window.replying_to is None
+
+
+def test_the_member_that_the_user_answers_replies_first(application, tmp_path):
+    window = make_window(tmp_path, FakeModel(reply="hey"))
+    room = window.engine.create_room("r", ["ana", "bo"])
+    window.select_room(room.id)
+    window.next_speaker()
+    wait_until_idle(application, window)
+    window.next_speaker()
+    wait_until_idle(application, window)
+    bo_message = window.engine.store.get(room.id).messages[-1]
+    assert bo_message.author == "bo"
+    window.message_action("reply", bo_message.id)
+    window.composer.setPlainText("you first")
+    window.send()
+    wait_until_idle(application, window)
+    authors = [m.author for m in window.engine.store.get(room.id).messages]
+    assert authors[-3:] == ["user", "bo", "ana"]

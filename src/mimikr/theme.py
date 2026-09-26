@@ -163,6 +163,9 @@ QLabel#bubble[match="true"], QLabel#mine[match="true"] {{ border: 2px solid {p.a
 QLabel#mine {{ background: {p.accent}; color: {p.accent_text}; border-radius: 16px; padding: 9px 13px; }}
 QLabel#avatar {{ color: #ffffff; font-size: {small}px; font-weight: 700; border-radius: 14px; }}
 
+QLabel#replyQuote {{ color: {p.muted}; font-size: {small}px; border-left: 2px solid {p.accent};
+    padding-left: 8px; background: transparent; }}
+QWidget#replyBar {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 12px; }}
 QWidget#composerBox {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 16px; }}
 QPlainTextEdit {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 8px; padding: 6px;
     selection-background-color: {p.accent}; selection-color: {p.accent_text}; }}
