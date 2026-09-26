@@ -263,3 +263,30 @@ mimikr will ask for.
 
 The folders of the identities and of the rooms are not on the page. A change
 of them needs a new start, and a person who moves the data can edit the file.
+
+### Pictures in data, and not in the identity
+
+A picture that the user chooses goes to `data/avatars/`, as a PNG of 256 by 256
+pixels. The window never writes into the directory of an identity, because
+[CONTRIBUTING.md](../CONTRIBUTING.md) says that the Software reads those files
+only. A person can still put `avatar.png` into that directory by hand, and the
+picture in `data` has priority.
+
+- **A path to the picture in identity.toml** lost. The window would then write
+  into identity.toml, and a picture outside the project could move and break it.
+- **The original image, as it is** lost. A photo can be large, and each avatar
+  in each message would read it again. A copy of 256 pixels is small and fast.
+
+### An export that says who wrote it
+
+An export is plain text in the form of `chat.md`. It is easy to paste into any
+application, and mimikr can read it again.
+
+The first lines say that a language model wrote the messages of the
+identities. They are not an option, because [TERMS.md](../TERMS.md) section 5
+asks that nobody shows the output as a message of the real person, and an
+export is the easiest way to do that by accident.
+
+- **HTML and PDF** lost. They look better, but a person who shares a chat
+  pastes text, and plain text needs no viewer.
+- **An export with no header** lost, for the reason above.
