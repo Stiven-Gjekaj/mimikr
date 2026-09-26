@@ -79,6 +79,15 @@ Each chat application can export to it with a short script.
   each format changes. An importer for each export comes later, and it writes
   `Name: message` lines.
 
+### English transcripts only
+
+The transcripts are in English, and mimikr supports no other language.
+The style profile, the prompt, and the choice of model assume English.
+
+- **Support for other languages** lost. It makes each measurement of the style
+  depend on the language, and it takes away the models that are strong in
+  English only. No user needs it.
+
 ### Rooms
 
 A conversation is a room.
