@@ -556,6 +556,14 @@ class SettingsPage(QScrollArea):
         form.addRow(self.label("Match the habits"), self.enforce_style)
         self.realistic_timing = QCheckBox("Wait about the time that a person takes to write each message")
         form.addRow(self.label("Realistic timing"), self.realistic_timing)
+        self.avoid_repeats = QCheckBox("Drop a message that the identity sent in its last six messages")
+        form.addRow(self.label("Avoid repeats"), self.avoid_repeats)
+        self.frequency_penalty = QDoubleSpinBox(minimum=-2.0, maximum=2.0, singleStep=0.1, decimals=2)
+        self.presence_penalty = QDoubleSpinBox(minimum=-2.0, maximum=2.0, singleStep=0.1, decimals=2)
+        for box in (self.frequency_penalty, self.presence_penalty):
+            box.setLocale(QLocale.c())
+        form.addRow(self.label("Frequency penalty"), self.frequency_penalty)
+        form.addRow(self.label("Presence penalty"), self.presence_penalty)
         column.addWidget(replies)
 
         pictures = self.card("Pictures", "A picture for each identity. The change shows at once, with no Save. "
@@ -662,6 +670,9 @@ class SettingsPage(QScrollArea):
         self.turn_taking.setCurrentIndex(max(0, self.turn_taking.findData(config.turn_taking)))
         self.enforce_style.setChecked(config.enforce_style)
         self.realistic_timing.setChecked(config.realistic_timing)
+        self.avoid_repeats.setChecked(config.avoid_repeats)
+        self.frequency_penalty.setValue(config.frequency_penalty)
+        self.presence_penalty.setValue(config.presence_penalty)
         self.accent_error.setText("")
         self.accent_error.hide()
 
@@ -739,6 +750,9 @@ class SettingsPage(QScrollArea):
         config.turn_taking = self.turn_taking.currentData()
         config.enforce_style = self.enforce_style.isChecked()
         config.realistic_timing = self.realistic_timing.isChecked()
+        config.avoid_repeats = self.avoid_repeats.isChecked()
+        config.frequency_penalty = round(self.frequency_penalty.value(), 2)
+        config.presence_penalty = round(self.presence_penalty.value(), 2)
         self.saved_config = replace(config)
         self.load(config)
         self.saved.emit()

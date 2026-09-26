@@ -773,3 +773,18 @@ def test_the_member_that_the_user_answers_replies_first(application, tmp_path):
     wait_until_idle(application, window)
     authors = [m.author for m in window.engine.store.get(room.id).messages]
     assert authors[-3:] == ["user", "bo", "ana"]
+
+
+def test_the_settings_save_the_penalties_and_avoid_repeats(application, tmp_path):
+    from mimikr.config import load_config
+
+    reconnected = []
+    window = make_window(tmp_path, FakeModel(), reconnect=reconnected.append)
+    page = window.settings
+    page.frequency_penalty.setValue(0.4)
+    page.presence_penalty.setValue(0.2)
+    page.avoid_repeats.setChecked(False)
+    page.save_button.click()
+    saved = load_config(tmp_path / "mimikr.toml", environ={})
+    assert (saved.frequency_penalty, saved.presence_penalty, saved.avoid_repeats) == (0.4, 0.2, False)
+    assert reconnected
