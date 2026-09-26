@@ -6,7 +6,7 @@ import time
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from mimikr.config import Config
 from mimikr.engine import RoomEngine
@@ -52,7 +52,9 @@ def test_the_window_lists_the_saved_rooms(application, tmp_path):
     window = make_window(tmp_path, FakeModel())
     window.engine.create_room("Friends", ["ana", "bo"])
     window.reload_rooms()
-    assert window.rooms.item(0).text() == "Friends\nana, bo"
+    card = window.rooms.itemWidget(window.rooms.item(0))
+    assert card.findChild(QLabel, "roomTitle").text() == "Friends"
+    assert card.findChild(QLabel, "roomMembers").text() == "ana, bo"
 
 
 def test_each_member_replies_to_the_user(application, tmp_path):
@@ -180,3 +182,24 @@ def test_stop_while_the_model_writes_keeps_no_part_of_the_reply(application, tmp
     assert window.engine.store.get(room.id).messages == []
     assert window.view.texts() == [] and window.view.draft is None
     assert window.status.text() == "Stopped."
+
+
+def test_a_short_message_does_not_wrap_and_a_long_one_does(application, tmp_path):
+    from mimikr.gui import BUBBLE_WIDTH
+    from mimikr.rooms import RoomMessage
+
+    window = make_window(tmp_path, FakeModel())
+    window.view.add(RoomMessage(author="ana", name="ana", text="who is asking"))
+    window.view.add(RoomMessage(author="ana", name="ana", text="word " * 80))
+    short, long = [label for label in window.view.findChildren(QLabel) if label.objectName() == "bubble"]
+    assert not short.wordWrap()
+    assert long.wordWrap() and long.minimumWidth() <= BUBBLE_WIDTH
+
+
+def test_the_window_uses_the_theme_of_the_settings(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    window.engine.config.theme = "dark"
+    window.engine.config.accent = "#123456"
+    window.apply_theme()
+    assert window.palette_now.dark
+    assert "#123456" in window.styleSheet()

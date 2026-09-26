@@ -171,6 +171,11 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
     selection-background-color: {p.accent}; selection-color: {p.accent_text};
 }}
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{ border: 1px solid {p.accent}; }}
+QComboBox::drop-down {{ border: none; width: 22px; }}
+QMenuBar {{ background: {p.sidebar}; border-bottom: 1px solid {p.border}; }}
+QMenuBar::item:selected, QMenu::item:selected {{ background: {p.selected}; }}
+QMenu {{ background: {p.surface}; border: 1px solid {p.border}; padding: 4px; }}
+QMenu::item {{ padding: 6px 18px; border-radius: 6px; }}
 QComboBox QAbstractItemView {{ background: {p.surface}; border: 1px solid {p.border};
     selection-background-color: {p.selected}; selection-color: {p.text}; }}
 QListWidget#members {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 8px; padding: 4px; }}

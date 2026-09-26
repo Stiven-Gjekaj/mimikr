@@ -10,8 +10,8 @@ import threading
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QAction, QKeySequence, QPalette
+from PySide6.QtCore import QObject, QSize, Qt, Signal
+from PySide6.QtGui import QAction, QFontMetrics, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -26,19 +26,35 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
-    QSplitter,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from mimikr import theme
 from mimikr.config import Config, embedding_base_url
 from mimikr.engine import EngineError, RoomEngine
 from mimikr.llm import ChatClient, LLMError
 from mimikr.rooms import USER, Room, RoomMessage
 
 BUBBLE_WIDTH = 520
+AVATAR_SIZE = 28
+# The pages of the main area.
+EMPTY_PAGE, ROOM_PAGE, SETTINGS_PAGE = 0, 1, 2
+
+
+def avatar(key: str, name: str, size: int = AVATAR_SIZE) -> QLabel:
+    """Return a round picture with the initials of a name, in the color of the key."""
+    label = QLabel(theme.initials(name), objectName="avatar", alignment=Qt.AlignmentFlag.AlignCenter)
+    label.setFixedSize(size, size)
+    label.setStyleSheet(f"background: {theme.avatar_color(key)}; border-radius: {size // 2}px;")
+    return label
+
+
+def system_is_dark() -> bool:
+    return QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
 
 
 class Stopped(Exception):
@@ -58,9 +74,27 @@ class Bridge(QObject):
 
 
 class Composer(QPlainTextEdit):
-    """A text field. Enter sends the text. Shift+Enter starts a new line."""
+    """A text field. Enter sends the text. Shift+Enter starts a new line.
+
+    The field grows with its text, from one line to six.
+    """
 
     submitted = Signal()
+
+    def __init__(self, **kwargs):
+        super().__init__(objectName="composer", **kwargs)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.textChanged.connect(self.fit_height)
+        self.fit_height()
+
+    def fit_height(self) -> None:
+        line = self.fontMetrics().lineSpacing()
+        count = int(self.document().size().height())
+        lines = max(1, min(6, count))
+        self.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded if count > 6 else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.setFixedHeight(lines * line + 16)
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not (
@@ -75,8 +109,9 @@ class NewRoomDialog(QDialog):
     def __init__(self, identities: dict, parent=None):
         super().__init__(parent)
         self.setWindowTitle("New room")
-        self.name = QLineEdit(placeholderText="Room")
-        self.members = QListWidget()
+        self.setMinimumWidth(360)
+        self.name = QLineEdit(placeholderText="Late night")
+        self.members = QListWidget(objectName="members")
         for identity in identities.values():
             item = QListWidgetItem(identity.display_name)
             item.setData(Qt.ItemDataRole.UserRole, identity.id)
@@ -86,16 +121,26 @@ class NewRoomDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
         self.ok.setText("Create")
+        self.ok.setObjectName("primary")
         self.ok.setEnabled(False)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         self.members.itemChanged.connect(lambda _: self.ok.setEnabled(bool(self.selected())))
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Name"))
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(8)
+        title = QLabel("New room", objectName="cardTitle")
+        layout.addWidget(title)
+        layout.addSpacing(6)
+        layout.addWidget(QLabel("NAME", objectName="sectionLabel"))
         layout.addWidget(self.name)
-        layout.addWidget(QLabel("Members" if identities else "No identities found. Add a directory to identities/."))
+        layout.addSpacing(8)
+        layout.addWidget(QLabel("MEMBERS", objectName="sectionLabel"))
+        if not identities:
+            layout.addWidget(QLabel("No identities found. Add a directory to identities/.", objectName="hint"))
         layout.addWidget(self.members)
+        layout.addSpacing(6)
         layout.addWidget(buttons)
 
     def selected(self) -> list[str]:
@@ -113,14 +158,17 @@ class MessageView(QScrollArea):
         super().__init__()
         self.setWidgetResizable(True)
         self.setFrameShape(QScrollArea.Shape.NoFrame)
-        body = QWidget()
+        body = QWidget(objectName="messages")
         self.column = QVBoxLayout(body)
-        self.column.setContentsMargins(20, 20, 20, 20)
-        self.column.setSpacing(4)
+        self.column.setContentsMargins(28, 20, 28, 20)
+        self.column.setSpacing(5)
         self.column.addStretch(1)
         self.setWidget(body)
         self.last_author: str | None = None
         self.draft: tuple[QWidget, QLabel] | None = None
+        # The size of the font in the style sheet. A new label has no parent yet
+        # when fit() measures it, so the style sheet does not apply to it then.
+        self.font_px = 14
         bar = self.verticalScrollBar()
         bar.rangeChanged.connect(lambda _minimum, maximum: bar.setValue(maximum))
 
@@ -132,15 +180,34 @@ class MessageView(QScrollArea):
                 widget.deleteLater()
         self.last_author = None
 
-    @staticmethod
-    def fit(bubble: QLabel, text: str) -> None:
+    def fit(self, bubble: QLabel, text: str) -> None:
         """Set the text. A label that wraps asks for a small width, so give it the width that its text needs."""
         bubble.setText(text)
+        font = bubble.font()
+        font.setPixelSize(self.font_px)
         padding = 30
-        needed = bubble.fontMetrics().boundingRect(
-            0, 0, BUBBLE_WIDTH - padding, 0, Qt.TextFlag.TextWordWrap, text
-        ).width()
-        bubble.setMinimumWidth(min(BUBBLE_WIDTH, needed + padding))
+        metrics = QFontMetrics(font)
+        single = max((metrics.horizontalAdvance(line) for line in text.splitlines() or [""]), default=0)
+        if single + padding <= BUBBLE_WIDTH:
+            # The text fits on its lines, so the label needs no wrap. A label that
+            # wraps keeps space for a second line that it does not use.
+            bubble.setWordWrap(False)
+            bubble.setMinimumWidth(single + padding)
+        else:
+            bubble.setWordWrap(True)
+            needed = metrics.boundingRect(0, 0, BUBBLE_WIDTH - padding, 0, Qt.TextFlag.TextWordWrap, text).width()
+            bubble.setMinimumWidth(min(BUBBLE_WIDTH, needed + padding))
+
+    def name_row(self, author: str, name: str) -> QWidget:
+        """Return the round picture and the name that start a group of messages."""
+        row = QWidget()
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, 12, 0, 2)
+        line.setSpacing(8)
+        line.addWidget(avatar(author, name))
+        line.addWidget(QLabel(name, objectName="name"))
+        line.addStretch(1)
+        return row
 
     def bubble_row(self, text: str, kind: str, mine: bool) -> tuple[QWidget, QLabel]:
         bubble = QLabel(objectName=kind)
@@ -151,7 +218,8 @@ class MessageView(QScrollArea):
         self.fit(bubble, text)
         row = QWidget()
         line = QHBoxLayout(row)
-        line.setContentsMargins(0, 0, 0, 0)
+        # A message of an identity starts under its name, after the round picture.
+        line.setContentsMargins(0 if mine else AVATAR_SIZE + 8, 0, 0, 0)
         if mine:
             line.addStretch(1)
         line.addWidget(bubble)
@@ -163,7 +231,9 @@ class MessageView(QScrollArea):
         self.clear_draft()
         mine = message.author == USER
         if not mine and message.author != self.last_author:
-            self.column.addWidget(QLabel(message.name, objectName="name"))
+            self.column.addWidget(self.name_row(message.author, message.name))
+        elif mine and self.last_author not in (None, USER):
+            self.column.addSpacing(10)
         self.last_author = message.author
         row, _ = self.bubble_row(message.text, "mine" if mine else "bubble", mine)
         self.column.addWidget(row)
@@ -176,7 +246,7 @@ class MessageView(QScrollArea):
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(4)
             if author != self.last_author:
-                layout.addWidget(QLabel(name, objectName="name"))
+                layout.addWidget(self.name_row(author, name))
             row, bubble = self.bubble_row(text, "draft", mine=False)
             layout.addWidget(row)
             self.column.addWidget(box)
@@ -193,6 +263,13 @@ class MessageView(QScrollArea):
 
     def draft_text(self) -> str | None:
         return None if self.draft is None else self.draft[1].text()
+
+    def set_font_px(self, size: int) -> None:
+        """Measure each bubble again after a change of the font size."""
+        self.font_px = size
+        for label in self.findChildren(QLabel):
+            if label.objectName() in ("mine", "bubble", "draft"):
+                self.fit(label, label.text())
 
     def texts(self) -> list[str]:
         return [label.text() for label in self.findChildren(QLabel) if label.objectName() in ("mine", "bubble")]
@@ -214,45 +291,104 @@ class MainWindow(QMainWindow):
         self.bridge.idle.connect(self.on_idle)
 
         self.setWindowTitle("mimikr")
-        self.resize(980, 680)
+        self.resize(1080, 720)
+        self.setMinimumSize(760, 520)
         self.build()
         self.build_menu()
+        self.apply_theme()
+        QGuiApplication.styleHints().colorSchemeChanged.connect(lambda _scheme: self.apply_theme())
         self.reload_rooms()
 
     # Layout
 
     def build(self) -> None:
-        self.rooms = QListWidget()
-        self.rooms.currentItemChanged.connect(self.on_room_selected)
-        new_room = QPushButton("New room")
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self.build_empty_page())
+        self.pages.addWidget(self.build_room_page())
+        self.pages.addWidget(self.build_settings_page())
+
+        main = QWidget(objectName="main")
+        layout = QHBoxLayout(main)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self.build_sidebar())
+        layout.addWidget(self.pages, 1)
+        self.setCentralWidget(main)
+
+    def build_sidebar(self) -> QWidget:
+        sidebar = QWidget(objectName="sidebar")
+        sidebar.setFixedWidth(264)
+        side = QVBoxLayout(sidebar)
+        side.setContentsMargins(14, 18, 14, 14)
+        side.setSpacing(6)
+
+        brand = QHBoxLayout()
+        brand.setContentsMargins(6, 0, 0, 0)
+        brand.setSpacing(0)
+        brand.addWidget(QLabel("mimikr", objectName="brand"))
+        brand.addWidget(QLabel(".", objectName="brandDot"))
+        brand.addStretch(1)
+        side.addLayout(brand)
+        side.addSpacing(10)
+
+        new_room = QPushButton("+  New room", objectName="primary")
         new_room.clicked.connect(self.new_room)
+        side.addWidget(new_room)
+        side.addSpacing(12)
+        rooms_label = QLabel("ROOMS", objectName="sectionLabel")
+        rooms_label.setContentsMargins(6, 0, 0, 2)
+        side.addWidget(rooms_label)
+
+        self.rooms = QListWidget(objectName="rooms")
+        self.rooms.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.rooms.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.rooms.currentItemChanged.connect(self.on_room_selected)
+        side.addWidget(self.rooms, 1)
+
         self.identity_errors = QLabel(objectName="error", wordWrap=True)
         self.identity_errors.hide()
-        sidebar = QWidget()
-        side = QVBoxLayout(sidebar)
-        side.addWidget(new_room)
-        side.addWidget(self.rooms, 1)
         side.addWidget(self.identity_errors)
 
+        self.settings_button = QPushButton("Settings", objectName="ghost", checkable=True)
+        self.settings_button.clicked.connect(self.toggle_settings)
+        side.addWidget(self.settings_button)
+        return sidebar
+
+    def build_empty_page(self) -> QWidget:
+        page = QWidget(objectName="page")
+        layout = QVBoxLayout(page)
+        layout.addStretch(1)
+        title = QLabel("mimikr", objectName="emptyTitle", alignment=Qt.AlignmentFlag.AlignCenter)
+        text = QLabel("Talk to the people you know, as they write.\nSelect a room on the left, or start a new one.",
+                      objectName="emptyText", alignment=Qt.AlignmentFlag.AlignCenter)
+        button = QPushButton("+  New room", objectName="primary")
+        button.clicked.connect(self.new_room)
+        layout.addWidget(title)
+        layout.addSpacing(6)
+        layout.addWidget(text)
+        layout.addSpacing(18)
+        layout.addWidget(button, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch(2)
+        return page
+
+    def build_room_page(self) -> QWidget:
+        header = QWidget(objectName="header")
+        head = QHBoxLayout(header)
+        head.setContentsMargins(28, 16, 20, 14)
+        heading = QVBoxLayout()
+        heading.setSpacing(2)
         self.title = QLabel(objectName="title")
         self.subtitle = QLabel(objectName="subtitle")
-        delete = QPushButton("Delete room")
-        delete.clicked.connect(self.delete_room)
-        header = QHBoxLayout()
-        heading = QVBoxLayout()
         heading.addWidget(self.title)
         heading.addWidget(self.subtitle)
-        header.addLayout(heading, 1)
-        header.addWidget(delete)
+        head.addLayout(heading, 1)
+        delete = QPushButton("Delete room", objectName="danger")
+        delete.clicked.connect(self.delete_room)
+        head.addWidget(delete, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         self.view = MessageView()
+
         self.status = QLabel(objectName="status")
-        self.composer = Composer(placeholderText="Write a message. Press Enter to send.")
-        self.composer.setFixedHeight(64)
-        self.composer.submitted.connect(self.send)
-        self.send_button = QPushButton("Send")
-        self.send_button.setDefault(True)
-        self.send_button.clicked.connect(self.send)
         self.next_button = QPushButton("Next speaker")
         self.next_button.setToolTip("The next member of the room writes a message.")
         self.next_button.clicked.connect(self.next_speaker)
@@ -261,36 +397,45 @@ class MainWindow(QMainWindow):
         self.auto_button = QPushButton("Auto")
         self.auto_button.setToolTip("The members talk to each other for the number of turns. Click Stop to end.")
         self.auto_button.clicked.connect(self.auto_or_stop)
-        controls = QHBoxLayout()
-        controls.addWidget(self.composer, 1)
-        buttons = QVBoxLayout()
-        buttons.addWidget(self.send_button)
-        buttons.addWidget(self.next_button)
-        controls.addLayout(buttons)
-        automatic = QVBoxLayout()
-        automatic.addWidget(self.turns)
-        automatic.addWidget(self.auto_button)
-        controls.addLayout(automatic)
+        toolbar = QWidget(objectName="toolbar")
+        tools = QHBoxLayout(toolbar)
+        tools.setContentsMargins(0, 0, 0, 0)
+        tools.setSpacing(8)
+        tools.addWidget(self.status, 1)
+        tools.addWidget(self.next_button)
+        tools.addWidget(self.turns)
+        tools.addWidget(self.auto_button)
 
-        room_page = QWidget()
-        room_layout = QVBoxLayout(room_page)
-        room_layout.addLayout(header)
-        room_layout.addWidget(self.view, 1)
-        room_layout.addWidget(self.status)
-        room_layout.addLayout(controls)
+        self.composer = Composer(placeholderText="Write a message. Enter sends it, and Shift+Enter starts a new line.")
+        self.composer.submitted.connect(self.send)
+        self.send_button = QPushButton("Send", objectName="primary")
+        self.send_button.setDefault(True)
+        self.send_button.clicked.connect(self.send)
+        box = QWidget(objectName="composerBox")
+        compose = QHBoxLayout(box)
+        compose.setContentsMargins(12, 6, 6, 6)
+        compose.setSpacing(8)
+        compose.addWidget(self.composer, 1)
+        compose.addWidget(self.send_button, alignment=Qt.AlignmentFlag.AlignBottom)
 
-        empty = QLabel("Select a room or make a new room.", alignment=Qt.AlignmentFlag.AlignCenter)
-        self.pages = QStackedWidget()
-        self.pages.addWidget(empty)
-        self.pages.addWidget(room_page)
+        bottom = QVBoxLayout()
+        bottom.setContentsMargins(24, 8, 24, 20)
+        bottom.setSpacing(10)
+        bottom.addWidget(toolbar)
+        bottom.addWidget(box)
 
-        splitter = QSplitter()
-        splitter.addWidget(sidebar)
-        splitter.addWidget(self.pages)
-        splitter.setSizes([240, 740])
-        splitter.setChildrenCollapsible(False)
-        self.setCentralWidget(splitter)
-        self.apply_style()
+        page = QWidget(objectName="page")
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(header)
+        layout.addWidget(self.view, 1)
+        layout.addLayout(bottom)
+        return page
+
+    def build_settings_page(self) -> QWidget:
+        # The settings page comes in a later step.
+        return QWidget(objectName="page")
 
     def build_menu(self) -> None:
         menu = self.menuBar().addMenu("Room")
@@ -298,27 +443,29 @@ class MainWindow(QMainWindow):
             ("New room", QKeySequence.StandardKey.New, self.new_room),
             ("Next speaker", QKeySequence("Ctrl+Shift+Return"), self.next_speaker),
             ("Reload identities", QKeySequence.StandardKey.Refresh, self.reload_rooms),
+            ("Settings", QKeySequence.StandardKey.Preferences, self.show_settings),
         ):
             action = QAction(text, self)
             action.setShortcut(shortcut)
             action.triggered.connect(slot)
             menu.addAction(action)
 
-    def apply_style(self) -> None:
-        palette = self.palette()
-        accent = palette.color(QPalette.ColorRole.Highlight).name()
-        accent_text = palette.color(QPalette.ColorRole.HighlightedText).name()
-        bubble = palette.color(QPalette.ColorRole.AlternateBase).name()
-        muted = palette.color(QPalette.ColorRole.PlaceholderText).name()
-        self.setStyleSheet(f"""
-            QLabel#bubble {{ background: {bubble}; border-radius: 12px; padding: 7px 11px; }}
-            QLabel#draft {{ background: {bubble}; border-radius: 12px; padding: 7px 11px; color: {muted}; }}
-            QLabel#mine {{ background: {accent}; color: {accent_text}; border-radius: 12px; padding: 7px 11px; }}
-            QLabel#name, QLabel#subtitle, QLabel#status {{ color: {muted}; font-size: 12px; }}
-            QLabel#name {{ margin: 6px 4px 0 4px; }}
-            QLabel#title {{ font-size: 16px; font-weight: 600; }}
-            QLabel#error {{ color: #d9534f; }}
-        """)
+    def apply_theme(self) -> None:
+        config = self.engine.config
+        dark = theme.is_dark(config.theme, system_is_dark())
+        self.palette_now = theme.palette(dark, config.accent)
+        self.setStyleSheet(theme.stylesheet(self.palette_now, config.font_size))
+        self.view.set_font_px(theme.font_size(config.font_size))
+
+    def toggle_settings(self) -> None:
+        if self.pages.currentIndex() == SETTINGS_PAGE:
+            self.open_room(self.room.id if self.room else None)
+        else:
+            self.show_settings()
+
+    def show_settings(self) -> None:
+        self.settings_button.setChecked(True)
+        self.pages.setCurrentIndex(SETTINGS_PAGE)
 
     # Rooms
 
@@ -334,20 +481,44 @@ class MainWindow(QMainWindow):
         self.rooms.blockSignals(True)
         self.rooms.clear()
         for room in self.engine.store.list():
-            item = QListWidgetItem(f"{room.name}\n{self.names(room.members)}")
+            item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, room.id)
+            card = self.room_card(room)
+            item.setSizeHint(QSize(0, card.sizeHint().height()))
             self.rooms.addItem(item)
+            self.rooms.setItemWidget(item, card)
             if room.id == current:
                 self.rooms.setCurrentItem(item)
         self.rooms.blockSignals(False)
+
+    def room_card(self, room: Room) -> QWidget:
+        """Return the entry of a room in the list: a round picture, the name and the members."""
+        card = QWidget()
+        card.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        line = QHBoxLayout(card)
+        line.setContentsMargins(10, 8, 10, 8)
+        line.setSpacing(10)
+        first = room.members[0] if room.members else room.id
+        line.addWidget(avatar(first, self.names([first]) or room.name, 32))
+        text = QVBoxLayout()
+        text.setSpacing(1)
+        title = QLabel(room.name, objectName="roomTitle")
+        members = QLabel(self.names(room.members), objectName="roomMembers")
+        for label in (title, members):
+            label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        text.addWidget(title)
+        text.addWidget(members)
+        line.addLayout(text, 1)
+        return card
 
     def on_room_selected(self, item: QListWidgetItem | None, _previous=None) -> None:
         self.open_room(item.data(Qt.ItemDataRole.UserRole) if item else None)
 
     def open_room(self, room_id: str | None) -> None:
+        self.settings_button.setChecked(False)
         if room_id is None:
             self.room = None
-            self.pages.setCurrentIndex(0)
+            self.pages.setCurrentIndex(EMPTY_PAGE)
             return
         self.room = self.engine.store.get(room_id)
         self.title.setText(self.room.name)
@@ -356,7 +527,7 @@ class MainWindow(QMainWindow):
         for message in self.room.messages:
             self.view.add(message)
         self.set_status("")
-        self.pages.setCurrentIndex(1)
+        self.pages.setCurrentIndex(ROOM_PAGE)
         self.composer.setFocus()
 
     def select_room(self, room_id: str) -> None:
@@ -392,7 +563,9 @@ class MainWindow(QMainWindow):
 
     def set_status(self, text: str, error: bool = False) -> None:
         self.status.setText(text)
-        self.status.setStyleSheet("color: #d9534f;" if error else "")
+        self.status.setObjectName("error" if error else "status")
+        self.status.style().unpolish(self.status)
+        self.status.style().polish(self.status)
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
@@ -400,6 +573,9 @@ class MainWindow(QMainWindow):
         self.next_button.setEnabled(not busy)
         self.turns.setEnabled(not busy)
         self.auto_button.setText("Stop" if busy else "Auto")
+        self.auto_button.setObjectName("danger" if busy else "")
+        self.auto_button.style().unpolish(self.auto_button)
+        self.auto_button.style().polish(self.auto_button)
 
     def send(self) -> None:
         text = self.composer.toPlainText().strip()
@@ -500,7 +676,7 @@ class MainWindow(QMainWindow):
             self.view.clear_draft()
             # The worker changed its own copy of the room. Load the saved copy.
             self.room = self.engine.store.get(room_id)
-            if not self.status.styleSheet() and self.status.text() != "Stopped.":
+            if self.status.objectName() != "error" and self.status.text() != "Stopped.":
                 self.set_status("")
 
 
