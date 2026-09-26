@@ -38,3 +38,9 @@ def test_a_repeat_of_a_recent_message_goes_away_with_no_case_or_space():
 
 def test_a_repeat_inside_one_reply_goes_away():
     assert drop_repeats(["lol", "LOL", "ok"], recent=[]) == ["lol", "ok"]
+
+
+def test_a_reply_keeps_only_as_many_emoji_as_the_person_uses():
+    profile = casual(emoji_rate=0.3, max_emoji=2)
+    assert enforce(profile, ["omg 😭😭😭😭 so true 🔥"]) == ["omg 😭😭 so true"]
+    assert enforce(profile, ["ok 😭"]) == ["ok 😭"]

@@ -55,3 +55,10 @@ def test_links_mentions_and_custom_emoji_are_not_stock_replies():
              + ["<:pepe:123456>"] * 3 + ["bet"] * 2]
     profile = build_profile(conversation(*lines), "Ana")
     assert profile.stock_replies == ["bet"]
+
+
+def test_max_emoji_is_the_ninetieth_percentile_of_the_messages_with_emoji():
+    lines = [("Ana", "ok 😭")] * 8 + [("Ana", "no 😭😭")] + [("Ana", "WHAT 😭😭😭😭😭😭")] + [("Ana", "plain")] * 5
+    profile = build_profile(conversation(*lines), "Ana")
+    assert profile.max_emoji == 2
+    assert "Put 2 emoji or fewer in one message." in profile.describe()

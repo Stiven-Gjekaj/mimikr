@@ -1,5 +1,6 @@
 """Measure how a person writes, from the messages in a transcript."""
 
+import math
 import re
 import statistics
 from collections import Counter
@@ -26,6 +27,8 @@ class StyleProfile:
     exclamation_rate: float = 0.0
     emoji_rate: float = 0.0
     top_emoji: list[str] = field(default_factory=list)
+    # The most emoji in one message, for 9 of 10 messages that have emoji.
+    max_emoji: int = 0
     stock_replies: list[str] = field(default_factory=list)
     messages_per_turn: float = 1.0
 
@@ -46,6 +49,8 @@ class StyleProfile:
             lines.append("Use exclamation marks often.")
         if self.emoji_rate >= 0.15 and self.top_emoji:
             lines.append(f"Use emoji often. Favorites: {' '.join(self.top_emoji)}")
+        if self.emoji_rate >= 0.03 and self.max_emoji:
+            lines.append(f"Put {self.max_emoji} emoji or fewer in one message.")
         elif self.emoji_rate < 0.03:
             lines.append("Do not use emoji.")
         if self.stock_replies:
@@ -61,6 +66,14 @@ class StyleProfile:
 
 def _rate(count: int, total: int) -> float:
     return count / total if total else 0.0
+
+
+def _percentile_90(values: list[int]) -> int:
+    if not values:
+        return 0
+    # The nearest rank: the smallest value that 90 percent of the values do not pass.
+    ordered = sorted(values)
+    return ordered[math.ceil(0.9 * len(ordered)) - 1]
 
 
 def build_profile(messages: list[Message], speaker: str) -> StyleProfile:
@@ -93,6 +106,7 @@ def build_profile(messages: list[Message], speaker: str) -> StyleProfile:
         exclamation_rate=_rate(sum("!" in text for text in texts), total),
         emoji_rate=_rate(sum(bool(_EMOJI.search(text)) for text in texts), total),
         top_emoji=[symbol for symbol, _ in emoji.most_common(5)],
+        max_emoji=_percentile_90([len(_EMOJI.findall(text)) for text in texts if _EMOJI.search(text)]),
         stock_replies=[text for text, count in short.most_common(6) if count >= 2],
         messages_per_turn=statistics.mean(turns),
     )
@@ -104,6 +118,18 @@ ENFORCE_MINIMUM = 5
 _FIRST_WORD = re.compile(r"^(\W*)(\w+)")
 
 
+def _keep_emoji(text: str, limit: int) -> str:
+    """Keep the first emoji of the text up to the limit, and remove the others."""
+    count = 0
+
+    def one(match: re.Match) -> str:
+        nonlocal count
+        count += 1
+        return match.group(0) if count <= limit else ""
+
+    return re.sub(r" {2,}", " ", _EMOJI.sub(one, text)).strip()
+
+
 def enforce(profile: StyleProfile, texts: list[str]) -> list[str]:
     """Change the replies of the model where they break a clear habit of the person.
 
@@ -112,6 +138,7 @@ def enforce(profile: StyleProfile, texts: list[str]) -> list[str]:
     - Almost no message ends with a period: remove one period at the end, and
       keep "..." as it is.
     - No message has an emoji: remove the emoji.
+    - Otherwise: keep only as many emoji in a message as the person usually puts in one.
     """
     if profile.message_count < ENFORCE_MINIMUM:
         return texts
@@ -119,6 +146,8 @@ def enforce(profile: StyleProfile, texts: list[str]) -> list[str]:
     for text in texts:
         if profile.emoji_rate == 0:
             text = re.sub(r" {2,}", " ", _EMOJI.sub("", text)).strip()
+        elif profile.max_emoji:
+            text = _keep_emoji(text, profile.max_emoji)
         if profile.lowercase_start >= 0.9:
             match = _FIRST_WORD.match(text)
             if match:
