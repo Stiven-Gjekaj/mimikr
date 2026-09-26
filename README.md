@@ -103,21 +103,29 @@ to each other.
 
 ### The macOS application
 
-A release does not exist yet. Build the application from the source, on a Mac
-with Apple silicon and macOS 13 or later:
+On a Mac with Apple silicon and macOS 13 or later, with Homebrew:
 
 ```bash
-scripts/build-macos-app.sh
+brew install --cask --no-quarantine stiven-gjekaj/tap/mimikr
 ```
 
-The script writes `dist/mimikr.app` and a zip of it. The application keeps its
-settings, identities and rooms in `~/Documents/mimikr`. No paid certificate
-signs it, so macOS can refuse to open a copy that you download. Take the mark
-off, and it opens:
+Or download `mimikr-1.0.0-macos-arm64.zip` from the
+[latest release](https://github.com/Stiven-Gjekaj/mimikr/releases/latest).
+Each release has build provenance, and this command checks it:
+
+```bash
+gh attestation verify mimikr-1.0.0-macos-arm64.zip --repo Stiven-Gjekaj/mimikr
+```
+
+No paid certificate signs the application, so macOS can refuse to open a copy
+that you download. Take the mark off, and it opens:
 
 ```bash
 xattr -d com.apple.quarantine /Applications/mimikr.app
 ```
+
+The application keeps its settings, identities and rooms in
+`~/Documents/mimikr`. `scripts/build-macos-app.sh` builds it from the source.
 
 ### From the source
 
