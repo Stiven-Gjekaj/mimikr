@@ -394,3 +394,42 @@ tap, and a person puts it into the tap after reading the draft.
 
 `ci.yml` runs the tests and `mimikr check` on macOS, Linux and Windows. The
 window tests need no screen. Linux needs the libraries that Qt loads.
+
+### P4: the score chose the continue mode
+
+The score ran on 26 September 2026 with Mistral Nemo 12B Instruct at Q4_K_M, on
+llama.cpp with a context of 8192, and nomic-embed-text v1.5 for the meaning.
+Each score holds the last 20 test replies of one person. The five identities
+are real people, so the transcripts are not in the repository.
+
+| Mode | Examples | Scores | Style, mean | Style, range | Meaning | Random real reply |
+| :-- | :-- | --: | --: | :-- | --: | --: |
+| continue | recent | 6 | **0.92** | 0.90 to 0.94 | 0.46 | 0.44 |
+| continue | similar | 3 | 0.89 | 0.87 to 0.92 | 0.45 | 0.45 |
+| chat | recent | 7 | 0.71 | 0.60 to 0.77 | 0.45 | 0.44 |
+| chat | similar | 3 | 0.71 | 0.63 to 0.77 | 0.44 | 0.45 |
+
+What the table says:
+
+- **The continue mode wins on style for each of the five people**, by 0.15 to
+  0.33. It is also three to four times faster: about 60 to 110 seconds for 20
+  replies, and about 280 seconds in the chat mode.
+- **Similar examples do not help.** Their style is equal or a little lower, and
+  they take three to five times longer.
+- **The meaning score does not separate the configurations.** Each is within
+  0.03 of the score of a random real reply of the same person. What somebody
+  says next in a casual chat is mostly not predictable, so the style score is
+  the useful one here.
+
+The limits of the run:
+
+- The similar examples have scores for three people only. For the other two,
+  the embedding server refused messages longer than its batch of 512 tokens.
+  mimikr now cuts a text before it embeds it, and the server that mimikr starts
+  has a batch of 2048.
+- The second run of each score was stopped after five scores, because the
+  first five agreed with the first run to 0.03. Two scores thus have two runs,
+  and the others have one.
+
+The decision: `mode = "continue"` is the default. `examples = "recent"` stays
+the default.
