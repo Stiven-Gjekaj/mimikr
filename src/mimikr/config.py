@@ -3,12 +3,19 @@
 The order of priority, from high to low:
 
 1. Environment variables, for example `MIMIKR_MODEL`.
-2. The file `mimikr.toml` in the working directory.
+2. The file `mimikr.toml` in the home of mimikr.
 3. The defaults in this file.
+
+The home of mimikr is `MIMIKR_HOME` if it is set. In the macOS application it
+is `~/Documents/mimikr`, because a program that starts from the Dock has no
+useful working directory. Otherwise it is the working directory.
+
+A relative folder in the settings is relative to the directory of mimikr.toml.
 """
 
 import json
 import os
+import sys
 import tomllib
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -61,8 +68,22 @@ class Config:
     data_dir: Path = Path("data")
 
 
-def load_config(path: Path = Path("mimikr.toml"), environ: dict[str, str] | None = None) -> Config:
+def app_home(environ: dict[str, str] | None = None) -> Path:
     environ = os.environ if environ is None else environ
+    if environ.get("MIMIKR_HOME"):
+        return Path(environ["MIMIKR_HOME"]).expanduser()
+    if getattr(sys, "frozen", False):
+        return Path.home() / "Documents" / "mimikr"
+    return Path.cwd()
+
+
+def config_file(environ: dict[str, str] | None = None) -> Path:
+    return app_home(environ) / "mimikr.toml"
+
+
+def load_config(path: Path | None = None, environ: dict[str, str] | None = None) -> Config:
+    environ = os.environ if environ is None else environ
+    path = path if path is not None else config_file(environ)
     values: dict[str, object] = {}
     if path.is_file():
         values.update(tomllib.loads(path.read_text(encoding="utf-8")))
@@ -76,6 +97,9 @@ def load_config(path: Path = Path("mimikr.toml"), environ: dict[str, str] | None
         if item.name not in values:
             continue
         setattr(config, item.name, convert(getattr(config, item.name), values[item.name]))
+    for name in ("identities_dir", "data_dir"):
+        folder = getattr(config, name).expanduser()
+        setattr(config, name, folder if folder.is_absolute() else path.parent / folder)
     return config
 
 
@@ -116,6 +140,7 @@ def save_config(config: Config, path: Path = Path("mimikr.toml")) -> None:
         else:
             text = repr(value)
         lines.append(f"{item.name} = {text}")
+    path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
     temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     temporary.replace(path)

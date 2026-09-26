@@ -54,7 +54,7 @@ from PySide6.QtWidgets import (
 
 from mimikr import theme
 from mimikr.avatars import AvatarStore
-from mimikr.config import Config, embedding_base_url, save_config
+from mimikr.config import Config, config_file, embedding_base_url, save_config
 from mimikr import editing
 from mimikr.engine import EngineError, RoomEngine
 from mimikr.identity import IdentityError, load_identity
@@ -757,13 +757,13 @@ class DropArea(QWidget):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, engine: RoomEngine, config_path: Path = Path("mimikr.toml"),
+    def __init__(self, engine: RoomEngine, config_path: Path | None = None,
                  reconnect: Callable[[Config], None] | None = None):
         super().__init__()
         self.local_servers: list[LocalServer] = []
         self.engine = engine
         self.avatars = AvatarStore(engine.config.data_dir, engine.config.identities_dir)
-        self.config_path = config_path
+        self.config_path = config_path or config_file()
         # The window calls this after a save, so that new server settings take effect.
         self.reconnect = reconnect
         # Ask the user for an image file. A test puts a function here that gives a path.
