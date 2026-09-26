@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """Build assets/wordmark.svg. Run it from the root of the repository.
 
-The banner is a chat window: a speech bubble, the name in a 5x7 pixel face on
-a 12px grid, three dots that show that somebody writes, and a mirror image of
-the name below it. The mirror image is the idea of the project: a copy of the
-original that is almost the same.
+The banner is a chat window: a speech bubble and the name in a 5x7 pixel face
+on a 15px grid. The margin above the name is equal to the margin below it, so
+the content is at the vertical center.
 
 The script draws the letters itself. Thus the file needs no font on the
 computer of the reader, and it carries no font licence.
 """
 
-CELL = 12          # one pixel of the face
+CELL = 15          # one pixel of the face
 COLS, ROWS = 5, 7  # each glyph has this size
 ADVANCE = (COLS + 1) * CELL
 
@@ -21,7 +20,7 @@ FACE = {
     "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
 }
 
-# A speech bubble with a tail at the bottom left. The cells are (row, col).
+# A speech bubble with a tail at the bottom left. It has the height of a glyph.
 BUBBLE = (
     "0111110",
     "1000001",
@@ -59,28 +58,11 @@ def word(text):
 
 
 WORD = "MIMIKR"
-PAD, TOP = 48, 40
-GAP = 2 * CELL                      # between the word and its mirror image
-text_x = PAD + 9 * CELL
+PAD = 48                            # the margin on each side
+text_x = PAD + (len(BUBBLE[0]) + 2) * CELL
 text_w = len(WORD) * ADVANCE - CELL
-dots_x = text_x + text_w + 2 * CELL
-W = dots_x + 7 * CELL + PAD
-word_h = ROWS * CELL
-mirror_y = TOP + word_h + GAP
-H = mirror_y + word_h // 2 + CELL
-
-
-def dot(n):
-    x = dots_x + n * 2 * CELL + CELL // 2
-    y = TOP + word_h - CELL
-    begin = f"{n * 0.2:.1f}s"
-    return (
-        f'    <rect x="{x}" y="{y}" width="{CELL}" height="{CELL}" fill="#34d399" opacity="0.35">\n'
-        f'      <animate attributeName="opacity" values="0.35;1;0.35;0.35" dur="1.2s"\n'
-        f'               begin="{begin}" repeatCount="indefinite"/>\n'
-        f"    </rect>"
-    )
-
+W = text_x + text_w + PAD
+H = 2 * PAD + ROWS * CELL
 
 svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="mimikr">
   <title>mimikr</title>
@@ -96,15 +78,6 @@ svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{
       <animateTransform attributeName="gradientTransform" type="translate"
                         values="0 0;1 0;0 0" dur="12s" repeatCount="indefinite"/>
     </linearGradient>
-
-    <!-- The mirror image fades out from its top edge. -->
-    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#fff" stop-opacity="0.35"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </linearGradient>
-    <mask id="reflection" maskUnits="userSpaceOnUse" x="0" y="{mirror_y}" width="{W}" height="{H - mirror_y}">
-      <rect x="0" y="{mirror_y}" width="{W}" height="{word_h // 2 + CELL}" fill="url(#fade)"/>
-    </mask>
 
     <filter id="glow" x="-20%" y="-40%" width="140%" height="180%">
       <feGaussianBlur stdDeviation="6" result="blur"/>
@@ -126,16 +99,8 @@ svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{
 
   <g filter="url(#glow)">
     <path d="{blocks(grid(BUBBLE))}" fill="#a78bfa" opacity="0.6"
-          transform="translate({PAD} {TOP})"/>
-    <path d="{word(WORD)}" fill="url(#ink)" transform="translate({text_x} {TOP})"/>
-{dot(0)}
-{dot(1)}
-{dot(2)}
-  </g>
-
-  <g mask="url(#reflection)">
-    <path d="{word(WORD)}" fill="url(#ink)"
-          transform="translate({text_x} {mirror_y + word_h}) scale(1 -1)"/>
+          transform="translate({PAD} {PAD})"/>
+    <path d="{word(WORD)}" fill="url(#ink)" transform="translate({text_x} {PAD})"/>
   </g>
 
   <rect width="{W}" height="{H}" rx="16" fill="url(#scanlines)"
