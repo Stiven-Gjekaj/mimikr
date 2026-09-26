@@ -2,7 +2,16 @@ import json
 
 import pytest
 
-from mimikr.importers import ExportError, clean_name, read_discord, read_telegram, read_whatsapp, write_transcript
+from mimikr.importers import (
+    ExportError,
+    clean_name,
+    detect_format,
+    read_discord,
+    read_export,
+    read_telegram,
+    read_whatsapp,
+    write_transcript,
+)
 from mimikr.transcript import Message, parse_transcript
 
 
@@ -132,3 +141,24 @@ def test_reads_a_discord_export():
 def test_refuses_json_that_is_not_a_chat_export():
     with pytest.raises(ExportError, match="one chat in DiscordChatExporter"):
         read_discord(json.dumps({"hello": "world"}))
+
+
+def test_detect_format_knows_each_export():
+    assert detect_format(ANDROID) == "whatsapp"
+    assert detect_format(IOS) == "whatsapp"
+    assert detect_format(json.dumps(TELEGRAM)) == "telegram"
+    assert detect_format(json.dumps(DISCORD)) == "discord"
+    assert detect_format(json.dumps({"chats": {"list": []}})) == "telegram"
+
+
+def test_detect_format_does_not_guess():
+    assert detect_format("hello\nworld") is None
+    assert detect_format(json.dumps({"messages": [1, 2]})) is None
+    assert detect_format("Sam: this is already a chat.md file") is None
+
+
+def test_read_export_reads_with_the_detected_reader():
+    kind, messages = read_export(json.dumps(DISCORD))
+    assert kind == "discord" and messages[0].text == "noodles?"
+    with pytest.raises(ExportError, match="does not know this file"):
+        read_export("just some notes")

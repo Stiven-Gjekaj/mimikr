@@ -127,3 +127,36 @@ def read_discord(text: str) -> list[Message]:
             time = str(item.get("timestamp", ""))[:19].replace("T", " ") or None
             messages.append(Message(speaker=speaker, text=body, time=time))
     return messages
+
+
+def detect_format(text: str) -> str | None:
+    """Return the name of the reader for an export: whatsapp, telegram or discord. None if no reader knows it."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict) and isinstance(data.get("messages"), list):
+        items = [item for item in data["messages"] if isinstance(item, dict)]
+        if "channel" in data or any("author" in item for item in items):
+            return "discord"
+        if any("from" in item or item.get("type") in ("message", "service") for item in items) or "type" in data:
+            return "telegram"
+        return None
+    if isinstance(data, dict) and "chats" in data:
+        return "telegram"
+    lines = text.replace("\u200e", "").splitlines()[:50]
+    if any(_WHATSAPP_LINE.match(line) and ": " in _WHATSAPP_LINE.match(line)["rest"] for line in lines):
+        return "whatsapp"
+    return None
+
+
+READERS = {"whatsapp": read_whatsapp, "telegram": read_telegram, "discord": read_discord}
+
+
+def read_export(text: str) -> tuple[str, list[Message]]:
+    """Find the format of an export and read it. Raise ExportError if no reader knows it."""
+    kind = detect_format(text)
+    if kind is None:
+        raise ExportError("mimikr does not know this file. Use an export of WhatsApp, Telegram Desktop or "
+                          "DiscordChatExporter")
+    return kind, READERS[kind](text)

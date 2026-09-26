@@ -19,7 +19,7 @@ from pathlib import Path
 from mimikr.config import Config, embedding_base_url, load_config
 from mimikr.evaluate import STYLE_FEATURES, EvaluationError, Report, run_evaluation
 from mimikr.identity import list_identities
-from mimikr.importers import ExportError, read_discord, read_telegram, read_whatsapp, write_transcript
+from mimikr.importers import READERS, ExportError, write_transcript
 from mimikr.llm import ChatClient, LLMError
 
 
@@ -146,9 +146,6 @@ def scores(config: Config, name: str | None) -> int:
         print(f"{identity:<12}{model:<36}{mode:<10}{examples:<10}{cases:>6}{style:>7.2f}{number(meaning):>9}"
               f"{number(baseline):>8}")
     return 0
-
-
-READERS = {"whatsapp": read_whatsapp, "telegram": read_telegram, "discord": read_discord}
 
 
 def import_export(kind: str, source: Path, output: Path | None, force: bool) -> int:
