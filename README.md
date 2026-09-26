@@ -13,7 +13,7 @@ _A short description, a transcript, and a model on your own computer._
 ![Linux](https://img.shields.io/badge/linux-a3e635?style=for-the-badge&logo=linux&logoColor=07090f)
 [![MIT licence](https://img.shields.io/badge/mit_licence-d9f99d?style=for-the-badge&logoColor=07090f)](LICENSE)
 
-![Phase](https://img.shields.io/badge/phase-P2_built-34d399?style=flat-square&labelColor=07090f)
+![Phase](https://img.shields.io/badge/phase-P4_open-34d399?style=flat-square&labelColor=07090f)
 ![Local](https://img.shields.io/badge/data-stays_local-a78bfa?style=flat-square&labelColor=07090f)
 
 <p align="center">
@@ -21,6 +21,7 @@ _A short description, a transcript, and a model on your own computer._
   <a href="#start"><b>Start</b></a> |
   <a href="#make-an-identity"><b>Identities</b></a> |
   <a href="#rooms"><b>Rooms</b></a> |
+  <a href="#import-a-chat"><b>Import</b></a> |
   <a href="#score-an-identity"><b>Score</b></a> |
   <a href="#how-a-reply-is-made"><b>How it works</b></a> |
   <a href="docs/roadmap.md"><b>Roadmap</b></a>
@@ -33,10 +34,12 @@ _A short description, a transcript, and a model on your own computer._
 ---
 
 > [!NOTE]
-> **Phases P1 and P2 are built.**
-> The window, the rooms, the identity files and the style profile work.
-> `mimikr eval` scores the replies of a model against the real replies.
-> The tests prove both with a fake model. No real model has run the score yet.
+> **The code of each phase is built, and P4 waits for a real run.**
+> The window shows replies while the model writes, the members can talk for a
+> number of turns, and `mimikr import` reads WhatsApp, Telegram and Discord.
+> `mimikr eval` scores the chat mode and the continuation mode, with recent or
+> similar examples. The tests prove each part with a fake model.
+> No real model has run the score yet, so the defaults are not proven.
 > [docs/roadmap.md](docs/roadmap.md) says what comes next, and
 > [docs/milestones.md](docs/milestones.md) holds each decision and the reason
 > for it.
@@ -98,6 +101,23 @@ With [Ollama](https://ollama.com):
 ollama pull llama3.1
 ```
 
+Or with [llama.cpp](https://github.com/ggml-org/llama.cpp), which serves one
+model on each server. Start one server for the chat model, and one for the
+embedding model:
+
+```bash
+llama-server -m ~/Models/Mistral-Nemo-Instruct-2407-Q4_K_M.gguf --port 8080 --alias mistral-nemo
+llama-server -m ~/Models/nomic-embed-text-v1.5.Q8_0.gguf --embeddings --port 8081 --alias nomic-embed-text
+```
+
+Then tell mimikr where they are, in `mimikr.toml`:
+
+```toml
+base_url = "http://localhost:8080/v1"
+embedding_url = "http://localhost:8081/v1"
+model = "mistral-nemo"
+```
+
 Then start mimikr from the root of the repository:
 
 ```bash
@@ -145,6 +165,7 @@ display_name = "Alex"
 speaker = "alex_99"     # the name of the person in chat.md
 model = "qwen2.5"       # a different model for this identity
 temperature = 0.7
+mode = "continue"       # "chat" or "continue", as the setting below
 ```
 
 If `speaker` is not set, mimikr uses the display name.
@@ -170,12 +191,53 @@ sam (Sam)
 
 ---
 
+## Import a chat
+
+`mimikr import` turns the export of a chat application into `chat.md` lines:
+
+```bash
+uv run mimikr import whatsapp "WhatsApp Chat with Sam.txt" -o identities/sam/chat.md
+```
+
+```
+5 messages from Sam (3), June (2)
+Wrote identities/sam/chat.md
+```
+
+```
+[12/31/23 9:41 PM] June: are you up
+[12/31/23 9:42 PM] Sam: unfortunately
+[12/31/23 9:42 PM] Sam: just got home
+[12/31/23 9:44 PM] June: lunch tomorrow?
+[12/31/23 9:44 PM] Sam: say less
+```
+
+That run read an invented export of seven lines. The import dropped the notice
+of encryption and the media line.
+
+| Format | The export to give it |
+| :-- | :-- |
+| `whatsapp` | **Export chat** in WhatsApp, with no media. Android and iOS both work. |
+| `telegram` | `result.json` from **Export chat history** in Telegram Desktop, as JSON, for one chat |
+| `discord` | The JSON export of one channel from [DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter) |
+
+The import skips notices, deleted messages, and files with no text.
+It does not write over a file unless you add `--force`.
+With no `-o`, it writes to the standard output.
+The count of messages for each name tells you which name to put in `speaker`.
+
+---
+
 ## Rooms
 
 - Click **New room**, and select the members.
 - Write a message and press Enter. Each member replies one time, in order.
-- Click **Next speaker** to let the next member write. Click it again and the
-  identities talk to each other.
+  The reply shows while the model writes it.
+- Click **Next speaker** to let the next member write.
+- Set the number of turns, and click **Auto**. The members talk to each other
+  for that number of messages.
+- Click **Stop** to end the work. A reply that the model has not finished goes
+  away, and nothing of it is saved.
 
 mimikr keeps each room as a JSON file in `data/rooms/`.
 
@@ -226,9 +288,22 @@ The meaning score needs an embedding model on the model server:
 ollama pull nomic-embed-text
 ```
 
-`--model` tries a different model, `--cases N` scores only the last N test
-replies, and `--no-meaning` skips the embedding model.
-Each report goes to `data/evals/` as JSON, so you can compare models later.
+| Option | What it does |
+| :-- | :-- |
+| `--model NAME` | Use a different model |
+| `--mode chat` or `--mode continue` | Use the chat mode or the continuation mode |
+| `--examples recent` or `--examples similar` | Choose the examples as in the setting below |
+| `--cases N` | Score only the last N test replies |
+| `--no-meaning` | Skip the meaning score |
+| `--show` | Show each real reply next to the reply of the model |
+
+Each report goes to `data/evals/` as JSON. `mimikr scores` puts all of them in
+one table, the best meaning score first:
+
+```bash
+uv run mimikr scores sam
+```
+
 The model writes different replies each time, so run a score two times before
 you trust a small difference.
 
@@ -240,18 +315,23 @@ you trust a small difference.
 flowchart LR
     A[personality.md] --> P[the prompt]
     B[chat.md] --> S[style profile] --> P
-    B --> E[recent examples] --> P
+    B --> E[recent or similar examples] --> P
     R[the room] --> P
     P --> M[(model server)]
     M --> X[split into messages] --> R
 ```
 
 1. mimikr reads the files of the identity again.
-2. The prompt holds the description, the style as plain instructions, and the
-   most recent part of the transcript that fits the budget.
-3. The messages of the identity go to the model as its own. The messages of
-   each other member go with the name first.
-4. mimikr removes a name that the model puts before its reply. If the person
+2. It chooses the examples. **Recent** takes the end of the transcript.
+   **Similar** takes the past exchanges that are most similar to the current
+   message, through the embedding model.
+3. In the **chat** mode, the prompt holds the description, the style as plain
+   instructions, and the examples. The messages of the identity go to the model
+   as its own, and the messages of each other member go with the name first.
+4. In the **continue** mode, the prompt is a plain chat log that ends with the
+   name of the person. A base model writes the next lines. It has no voice of
+   an assistant to hide, because it never learned one.
+5. mimikr removes a name that the model puts before its reply. If the person
    sends short messages in a row, each line becomes one message.
 
 ---
@@ -267,7 +347,10 @@ environment variables. The environment variables have priority.
 | `api_key` | `MIMIKR_API_KEY` | `local` |
 | `model` | `MIMIKR_MODEL` | `llama3.1` |
 | `temperature` | `MIMIKR_TEMPERATURE` | `0.8` |
+| `mode` | `MIMIKR_MODE` | `chat`. Or `continue`, for a base model. |
+| `examples` | `MIMIKR_EXAMPLES` | `recent`. Or `similar`, which needs the embedding model. |
 | `embedding_model` | `MIMIKR_EMBEDDING_MODEL` | `nomic-embed-text` |
+| `embedding_url` | `MIMIKR_EMBEDDING_URL` | empty, which means the server in `base_url` |
 | `identities_dir` | `MIMIKR_IDENTITIES_DIR` | `identities` |
 | `data_dir` | `MIMIKR_DATA_DIR` | `data` |
 
