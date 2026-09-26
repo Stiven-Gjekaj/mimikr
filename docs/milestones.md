@@ -411,11 +411,12 @@ are real people, so the transcripts are not in the repository.
 
 What the table says:
 
-- **The continue mode wins on style for each of the five people**, by 0.15 to
-  0.33. It is also three to four times faster: about 60 to 110 seconds for 20
-  replies, and about 280 seconds in the chat mode.
-- **Similar examples do not help.** Their style is equal or a little lower, and
-  they take three to five times longer.
+- **The continue mode wins on style for each of the five people**, by 0.16 to
+  0.33. It is also faster: 63 to 107 seconds for 20 replies, against 226 to 323
+  seconds in the chat mode.
+- **Similar examples do not help.** Their style is equal or a little lower. In
+  the continue mode they take three to five times longer (320 to 344 seconds),
+  and in the chat mode a little longer (307 to 321 seconds).
 - **The meaning score does not separate the configurations.** Each is within
   0.03 of the score of a random real reply of the same person. What somebody
   says next in a casual chat is mostly not predictable, so the style score is
@@ -428,7 +429,7 @@ The limits of the run:
   mimikr now cuts a text before it embeds it, and the server that mimikr starts
   has a batch of 2048.
 - The second run of each score was stopped after five scores, because the
-  first five agreed with the first run to 0.03. Two scores thus have two runs,
+  first five agreed with the first run to 0.03. Three scores thus have two runs,
   and the others have one.
 
 The decision: `mode = "continue"` is the default. `examples = "recent"` stays
