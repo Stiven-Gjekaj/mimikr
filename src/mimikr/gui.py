@@ -5,17 +5,22 @@ The worker sends its results to the window through Qt signals.
 Only one worker runs at a time.
 """
 
+import re
 import sys
 import threading
-
 from collections.abc import Callable
+from dataclasses import fields, replace
+from pathlib import Path
 
-from PySide6.QtCore import QObject, QSize, Qt, Signal
+from PySide6.QtCore import QLocale, QObject, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QFontMetrics, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -34,7 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from mimikr import theme
-from mimikr.config import Config, embedding_base_url
+from mimikr.config import Config, embedding_base_url, save_config
 from mimikr.engine import EngineError, RoomEngine
 from mimikr.llm import ChatClient, LLMError
 from mimikr.rooms import USER, Room, RoomMessage
@@ -275,10 +280,229 @@ class MessageView(QScrollArea):
         return [label.text() for label in self.findChildren(QLabel) if label.objectName() in ("mine", "bubble")]
 
 
+class SettingsPage(QScrollArea):
+    """Edit the settings. A change of the look shows at once. Save writes mimikr.toml."""
+
+    # The window applies the look of the settings on the page, before they are saved.
+    look_changed = Signal()
+    saved = Signal()
+
+    def __init__(self, config: Config):
+        super().__init__()
+        self.config = config
+        self.setWidgetResizable(True)
+        self.setFrameShape(QScrollArea.Shape.NoFrame)
+        body = QWidget(objectName="page")
+        column = QVBoxLayout(body)
+        column.setContentsMargins(32, 28, 32, 28)
+        column.setSpacing(18)
+        title = QLabel("Settings", objectName="title")
+        column.addWidget(title)
+
+        # Appearance.
+        self.theme = QComboBox()
+        self.theme.addItems(["System", "Light", "Dark"])
+        self.swatches: dict[str, QPushButton] = {}
+        swatch_row = QHBoxLayout()
+        swatch_row.setSpacing(8)
+        for name, color in theme.ACCENTS.items():
+            button = QPushButton(objectName="swatch", checkable=True, toolTip=name.capitalize())
+            button.setFixedSize(28, 28)
+            button.setStyleSheet(
+                f"QPushButton#swatch {{ background: {color}; border-radius: 14px; border: 3px solid {color}; }}"
+                f"QPushButton#swatch:checked {{ border: 3px solid #9ca3af; }}"
+            )
+            button.clicked.connect(lambda _checked, name=name: self.choose_accent(name))
+            self.swatches[name] = button
+            swatch_row.addWidget(button)
+        self.custom_accent = QLineEdit(placeholderText="#rrggbb")
+        self.custom_accent.setMaximumWidth(110)
+        self.custom_accent.editingFinished.connect(self.choose_custom_accent)
+        swatch_row.addSpacing(6)
+        swatch_row.addWidget(self.custom_accent)
+        swatch_row.addStretch(1)
+        self.accent_error = QLabel(objectName="error")
+        self.accent_error.hide()
+        self.font_size = QSpinBox(minimum=theme.FONT_SIZES.start, maximum=theme.FONT_SIZES.stop - 1, suffix=" px")
+        appearance = self.card("Appearance", "How the window looks. The change shows at once.")
+        form = self.form(appearance)
+        form.addRow(self.label("Theme"), self.theme)
+        accent_cell = QVBoxLayout()
+        accent_cell.setSpacing(4)
+        accent_cell.addLayout(swatch_row)
+        accent_cell.addWidget(self.accent_error)
+        form.addRow(self.label("Accent"), accent_cell)
+        form.addRow(self.label("Text size"), self.font_size)
+        column.addWidget(appearance)
+
+        # Model server.
+        self.base_url = QLineEdit(placeholderText="http://localhost:11434/v1")
+        self.model = QLineEdit(placeholderText="llama3.1")
+        self.api_key = QLineEdit(echoMode=QLineEdit.EchoMode.Password)
+        self.embedding_url = QLineEdit(placeholderText="Empty: the chat server")
+        self.embedding_model = QLineEdit(placeholderText="nomic-embed-text")
+        server = self.card("Model server", "Any server with the OpenAI API: Ollama, LM Studio or llama.cpp.")
+        form = self.form(server)
+        form.addRow(self.label("Chat server"), self.base_url)
+        form.addRow(self.label("Chat model"), self.model)
+        form.addRow(self.label("API key"), self.api_key)
+        form.addRow(self.label("Embedding server"), self.embedding_url)
+        form.addRow(self.label("Embedding model"), self.embedding_model)
+        column.addWidget(server)
+
+        # Replies.
+        self.mode = QComboBox()
+        self.mode.addItem("Chat: an instruct model answers", "chat")
+        self.mode.addItem("Continue: the model continues a chat log", "continue")
+        self.examples = QComboBox()
+        self.examples.addItem("Recent: the end of the transcript", "recent")
+        self.examples.addItem("Similar: the most similar exchanges", "similar")
+        self.temperature = QDoubleSpinBox(minimum=0.0, maximum=2.0, singleStep=0.05, decimals=2)
+        # A point, and not the comma of some locales, as in mimikr.toml.
+        self.temperature.setLocale(QLocale.c())
+        replies = self.card("Replies", "An identity can set its own model, temperature and mode in identity.toml.")
+        form = self.form(replies)
+        form.addRow(self.label("Mode"), self.mode)
+        form.addRow(self.label("Examples"), self.examples)
+        form.addRow(self.label("Temperature"), self.temperature)
+        column.addWidget(replies)
+
+        self.note = QLabel(objectName="hint", wordWrap=True)
+        self.save_button = QPushButton("Save", objectName="primary")
+        self.save_button.clicked.connect(self.save)
+        self.revert_button = QPushButton("Revert")
+        self.revert_button.clicked.connect(self.revert)
+        actions = QHBoxLayout()
+        actions.addWidget(self.note, 1)
+        actions.addWidget(self.revert_button)
+        actions.addWidget(self.save_button)
+        column.addLayout(actions)
+        column.addStretch(1)
+        self.setWidget(body)
+
+        self.accent = config.accent
+        self.saved_config = replace(config)
+        self.load(config)
+        self.theme.currentIndexChanged.connect(self.preview)
+        self.font_size.valueChanged.connect(self.preview)
+
+    @staticmethod
+    def card(title: str, hint: str) -> QWidget:
+        card = QWidget(objectName="card")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(22, 18, 22, 20)
+        layout.setSpacing(4)
+        layout.addWidget(QLabel(title, objectName="cardTitle"))
+        layout.addWidget(QLabel(hint, objectName="hint", wordWrap=True))
+        layout.addSpacing(10)
+        return card
+
+    @staticmethod
+    def label(text: str) -> QLabel:
+        """Return a label of one width, so that the fields of all cards start at one line."""
+        label = QLabel(text, objectName="formLabel")
+        label.setFixedWidth(150)
+        return label
+
+    @staticmethod
+    def form(card: QWidget) -> QFormLayout:
+        form = QFormLayout()
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(10)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        card.layout().addLayout(form)
+        return form
+
+    def load(self, config: Config) -> None:
+        """Show the values of the config on the page."""
+        for widget in (self.theme, self.font_size):
+            widget.blockSignals(True)
+        self.theme.setCurrentIndex(max(0, theme.THEMES.index(config.theme)) if config.theme in theme.THEMES else 0)
+        self.font_size.setValue(theme.font_size(config.font_size))
+        for widget in (self.theme, self.font_size):
+            widget.blockSignals(False)
+        self.accent = config.accent
+        self.custom_accent.setText("" if config.accent in theme.ACCENTS else config.accent)
+        self.mark_accent()
+        self.base_url.setText(config.base_url)
+        self.model.setText(config.model)
+        self.api_key.setText(config.api_key)
+        self.embedding_url.setText(config.embedding_url)
+        self.embedding_model.setText(config.embedding_model)
+        self.mode.setCurrentIndex(max(0, self.mode.findData(config.mode)))
+        self.examples.setCurrentIndex(max(0, self.examples.findData(config.examples)))
+        self.temperature.setValue(config.temperature)
+        self.accent_error.setText("")
+        self.accent_error.hide()
+
+    def mark_accent(self) -> None:
+        for name, button in self.swatches.items():
+            button.setChecked(name == self.accent)
+
+    def choose_accent(self, name: str) -> None:
+        self.accent = name
+        self.custom_accent.setText("")
+        self.accent_error.setText("")
+        self.accent_error.hide()
+        self.mark_accent()
+        self.preview()
+
+    def choose_custom_accent(self) -> None:
+        text = self.custom_accent.text().strip()
+        if not text:
+            return
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", text):
+            self.accent_error.setText("Write a color as # and six hex digits, for example #ff8800.")
+            self.accent_error.show()
+            return
+        self.accent_error.setText("")
+        self.accent_error.hide()
+        self.accent = text.lower()
+        self.mark_accent()
+        self.preview()
+
+    def apply_look(self, config: Config) -> None:
+        config.theme = theme.THEMES[self.theme.currentIndex()]
+        config.accent = self.accent
+        config.font_size = self.font_size.value()
+
+    def preview(self) -> None:
+        self.apply_look(self.config)
+        self.look_changed.emit()
+
+    def save(self) -> None:
+        config = self.config
+        self.apply_look(config)
+        config.base_url = self.base_url.text().strip() or Config.base_url
+        config.model = self.model.text().strip() or Config.model
+        config.api_key = self.api_key.text() or Config.api_key
+        config.embedding_url = self.embedding_url.text().strip()
+        config.embedding_model = self.embedding_model.text().strip() or Config.embedding_model
+        config.mode = self.mode.currentData()
+        config.examples = self.examples.currentData()
+        config.temperature = round(self.temperature.value(), 2)
+        self.saved_config = replace(config)
+        self.load(config)
+        self.saved.emit()
+
+    def revert(self) -> None:
+        """Go back to the saved settings, and show the saved look again."""
+        for item in fields(Config):
+            setattr(self.config, item.name, getattr(self.saved_config, item.name))
+        self.load(self.config)
+        self.note.setText("")
+        self.look_changed.emit()
+
+
 class MainWindow(QMainWindow):
-    def __init__(self, engine: RoomEngine):
+    def __init__(self, engine: RoomEngine, config_path: Path = Path("mimikr.toml"),
+                 reconnect: Callable[[Config], None] | None = None):
         super().__init__()
         self.engine = engine
+        self.config_path = config_path
+        # The window calls this after a save, so that new server settings take effect.
+        self.reconnect = reconnect
         self.room: Room | None = None
         self.busy = False
         self.bridge = Bridge()
@@ -434,8 +658,21 @@ class MainWindow(QMainWindow):
         return page
 
     def build_settings_page(self) -> QWidget:
-        # The settings page comes in a later step.
-        return QWidget(objectName="page")
+        self.settings = SettingsPage(self.engine.config)
+        self.settings.look_changed.connect(self.apply_theme)
+        self.settings.saved.connect(self.save_settings)
+        return self.settings
+
+    def save_settings(self) -> None:
+        try:
+            save_config(self.engine.config, self.config_path)
+        except OSError as error:
+            self.settings.note.setText(f"Cannot write {self.config_path}: {error.strerror}")
+            return
+        if self.reconnect:
+            self.reconnect(self.engine.config)
+        self.apply_theme()
+        self.settings.note.setText(f"Saved to {self.config_path}. An environment variable has priority at the next start.")
 
     def build_menu(self) -> None:
         menu = self.menuBar().addMenu("Room")
@@ -689,6 +926,13 @@ def run(config: Config) -> int:
     def embed(texts: list[str]) -> list[list[float]]:
         return embedding_client.embed(texts, config.embedding_model)
 
-    window = MainWindow(RoomEngine(config, chat, embed))
+    engine = RoomEngine(config, chat, embed)
+
+    def reconnect(new: Config) -> None:
+        nonlocal embedding_client
+        engine.completer = ChatClient(new.base_url, new.api_key)
+        embedding_client = ChatClient(embedding_base_url(new), new.api_key)
+
+    window = MainWindow(engine, reconnect=reconnect)
     window.show()
     return application.exec()

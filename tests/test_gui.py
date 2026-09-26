@@ -30,13 +30,13 @@ def application():
     return QApplication.instance() or QApplication([])
 
 
-def make_window(tmp_path, model: FakeModel) -> MainWindow:
+def make_window(tmp_path, model: FakeModel, reconnect=None) -> MainWindow:
     for person in ("ana", "bo"):
         directory = tmp_path / "identities" / person
         directory.mkdir(parents=True)
         (directory / "personality.md").write_text(f"This is {person}.", encoding="utf-8")
     config = Config(identities_dir=tmp_path / "identities", data_dir=tmp_path / "data")
-    return MainWindow(RoomEngine(config, model))
+    return MainWindow(RoomEngine(config, model), config_path=tmp_path / "mimikr.toml", reconnect=reconnect)
 
 
 def wait_until_idle(application, window: MainWindow) -> None:
@@ -203,3 +203,61 @@ def test_the_window_uses_the_theme_of_the_settings(application, tmp_path):
     window.apply_theme()
     assert window.palette_now.dark
     assert "#123456" in window.styleSheet()
+
+
+def test_the_settings_button_opens_and_closes_the_settings(application, tmp_path):
+    from mimikr.gui import EMPTY_PAGE, SETTINGS_PAGE
+
+    window = make_window(tmp_path, FakeModel())
+    window.settings_button.click()
+    assert window.pages.currentIndex() == SETTINGS_PAGE
+    window.settings_button.click()
+    assert window.pages.currentIndex() == EMPTY_PAGE
+
+
+def test_a_change_of_the_look_shows_before_the_save_and_revert_takes_it_back(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    window.engine.config.theme = "light"
+    window.settings.load(window.engine.config)
+    window.settings.saved_config.theme = "light"
+    window.apply_theme()
+    window.settings.theme.setCurrentIndex(2)
+    window.settings.swatches["teal"].click()
+    assert window.palette_now.dark and window.palette_now.accent == "#14b8a6"
+    assert not (tmp_path / "mimikr.toml").exists()
+    window.settings.revert()
+    assert not window.palette_now.dark and window.palette_now.accent == "#8b5cf6"
+
+
+def test_save_writes_the_file_and_reconnects(application, tmp_path):
+    from mimikr.config import load_config
+
+    reconnected = []
+    window = make_window(tmp_path, FakeModel(), reconnect=reconnected.append)
+    page = window.settings
+    page.base_url.setText("http://localhost:8080/v1")
+    page.model.setText("mistral-nemo")
+    page.embedding_url.setText("http://localhost:8081/v1")
+    page.mode.setCurrentIndex(page.mode.findData("continue"))
+    page.examples.setCurrentIndex(page.examples.findData("similar"))
+    page.temperature.setValue(0.65)
+    page.font_size.setValue(16)
+    page.save_button.click()
+    saved = load_config(tmp_path / "mimikr.toml", environ={})
+    assert (saved.base_url, saved.model, saved.embedding_url) == (
+        "http://localhost:8080/v1", "mistral-nemo", "http://localhost:8081/v1")
+    assert (saved.mode, saved.examples, saved.temperature, saved.font_size) == ("continue", "similar", 0.65, 16)
+    assert reconnected == [window.engine.config]
+    assert "Saved to" in page.note.text()
+
+
+def test_a_wrong_custom_accent_is_refused(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    page = window.settings
+    page.custom_accent.setText("orange-ish")
+    page.choose_custom_accent()
+    assert "six hex digits" in page.accent_error.text()
+    assert window.engine.config.accent == "violet"
+    page.custom_accent.setText("#FF8800")
+    page.choose_custom_accent()
+    assert window.engine.config.accent == "#ff8800" and page.accent_error.text() == ""

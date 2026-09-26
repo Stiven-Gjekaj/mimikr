@@ -138,8 +138,6 @@ QPushButton#ghost:hover {{ background: {p.hover}; color: {p.text}; }}
 QPushButton#ghost:checked {{ background: {p.selected}; color: {p.text}; }}
 QPushButton#danger {{ background: transparent; border: 1px solid {p.border}; color: {p.danger}; }}
 QPushButton#danger:hover {{ background: {p.hover}; }}
-QPushButton#swatch {{ border-radius: 13px; padding: 0; min-width: 26px; max-width: 26px;
-    min-height: 26px; max-height: 26px; }}
 
 QListWidget#rooms {{ background: transparent; border: none; outline: none; }}
 QListWidget#rooms::item {{ border-radius: 10px; margin: 1px 0; }}
@@ -147,6 +145,7 @@ QListWidget#rooms::item:hover {{ background: {p.hover}; }}
 QListWidget#rooms::item:selected {{ background: {p.selected}; }}
 QLabel#roomTitle {{ font-weight: 600; background: transparent; }}
 QLabel#roomMembers {{ color: {p.muted}; font-size: {small}px; background: transparent; }}
+QLabel#formLabel {{ color: {p.muted}; }}
 QLabel#sectionLabel {{ color: {p.muted}; font-size: {small}px; font-weight: 600; letter-spacing: 0.5px; }}
 
 QWidget#header {{ background: {p.window}; border-bottom: 1px solid {p.border}; }}
@@ -171,7 +170,6 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
     selection-background-color: {p.accent}; selection-color: {p.accent_text};
 }}
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{ border: 1px solid {p.accent}; }}
-QComboBox::drop-down {{ border: none; width: 22px; }}
 QMenuBar {{ background: {p.sidebar}; border-bottom: 1px solid {p.border}; }}
 QMenuBar::item:selected, QMenu::item:selected {{ background: {p.selected}; }}
 QMenu {{ background: {p.surface}; border: 1px solid {p.border}; padding: 4px; }}
