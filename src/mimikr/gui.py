@@ -468,7 +468,8 @@ class SettingsPage(QScrollArea):
         form.addRow(self.label("Temperature"), self.temperature)
         column.addWidget(replies)
 
-        pictures = self.card("Pictures", "A picture for each identity. mimikr keeps a copy in data/avatars/.")
+        pictures = self.card("Pictures", "A picture for each identity. The change shows at once, with no Save. "
+                                                "mimikr keeps a copy in data/avatars/.")
         self.pictures = QVBoxLayout()
         self.pictures.setSpacing(8)
         pictures.layout().addLayout(self.pictures)
