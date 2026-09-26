@@ -1,6 +1,6 @@
 import json
 
-from mimikr.cli import evaluate
+from mimikr.cli import evaluate, scores
 from mimikr.config import Config
 
 
@@ -110,3 +110,40 @@ def test_the_mode_option_is_in_the_report_and_the_file_name(tmp_path, capsys):
     evaluate(make_config(tmp_path), "sam", None, None, False, False, client=FakeClient(), mode="continue")
     assert "continue mode" in capsys.readouterr().out
     assert list((tmp_path / "data" / "evals").glob("sam-default-model-continue-recent-*.json"))
+
+
+def save_report(directory, name, identity, model, style, meaning):
+    directory.mkdir(parents=True, exist_ok=True)
+    report = {"identity": identity, "model": model, "mode": "chat", "examples": "recent",
+              "results": [{}] * 12, "style": {"score": style},
+              "meaning": None if meaning is None else {"score": meaning, "baseline": 0.3}}
+    (directory / name).write_text(json.dumps(report), encoding="utf-8")
+
+
+def test_scores_sorts_by_meaning_and_puts_reports_with_no_meaning_last(tmp_path, capsys):
+    config = make_config(tmp_path)
+    evals = tmp_path / "data" / "evals"
+    save_report(evals, "a.json", "sam", "small", 0.9, 0.40)
+    save_report(evals, "b.json", "sam", "large", 0.7, 0.55)
+    save_report(evals, "c.json", "sam", "nomeaning", 0.95, None)
+    save_report(evals, "d.json", "june", "other", 0.5, 0.9)
+    assert scores(config, "sam") == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert [line.split()[1] for line in lines[1:]] == ["large", "small", "nomeaning"]
+    assert lines[1].split()[-2:] == ["0.55", "0.30"]
+    assert lines[3].split()[-2:] == ["-", "-"]
+
+
+def test_scores_skips_a_damaged_file(tmp_path, capsys):
+    config = make_config(tmp_path)
+    evals = tmp_path / "data" / "evals"
+    save_report(evals, "a.json", "sam", "small", 0.9, 0.4)
+    (evals / "bad.json").write_text("{", encoding="utf-8")
+    assert scores(config, None) == 0
+    captured = capsys.readouterr()
+    assert "skip bad.json" in captured.err and "small" in captured.out
+
+
+def test_scores_with_no_reports_says_what_to_do(tmp_path, capsys):
+    assert scores(make_config(tmp_path), None) == 1
+    assert "Run `mimikr eval <identity>` first." in capsys.readouterr().out

@@ -4,6 +4,7 @@
 - `mimikr check`: load each identity and show what the program found.
 - `mimikr eval <identity>`: score how near the replies of the model are to the
   real replies of the person.
+- `mimikr scores [identity]`: compare the saved scores.
 """
 
 import argparse
@@ -112,6 +113,36 @@ def evaluate(config: Config, name: str, cases: int | None, model: str | None, me
     return 0
 
 
+def scores(config: Config, name: str | None) -> int:
+    """Print a table of the saved reports, the best meaning score first."""
+    rows = []
+    for path in sorted((config.data_dir / "evals").glob("*.json")):
+        try:
+            report = json.loads(path.read_text(encoding="utf-8"))
+            if name and report["identity"] != name:
+                continue
+            meaning = report["meaning"] or {}
+            rows.append((
+                report["identity"], report["model"], report.get("mode", "chat"), report.get("examples", "recent"),
+                len(report["results"]), report["style"]["score"], meaning.get("score"), meaning.get("baseline"),
+            ))
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"mimikr: skip {path.name}: {error}", file=sys.stderr)
+    if not rows:
+        print("No saved scores. Run `mimikr eval <identity>` first.")
+        return 1
+    rows.sort(key=lambda row: (row[6] is not None, row[6] or 0, row[5]), reverse=True)
+
+    def number(value):
+        return "-" if value is None else f"{value:.2f}"
+
+    print(f"{'identity':<12}{'model':<36}{'mode':<10}{'examples':<10}{'cases':>6}{'style':>7}{'meaning':>9}{'random':>8}")
+    for identity, model, mode, examples, cases, style, meaning, baseline in rows:
+        print(f"{identity:<12}{model:<36}{mode:<10}{examples:<10}{cases:>6}{style:>7.2f}{number(meaning):>9}"
+              f"{number(baseline):>8}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mimikr")
     commands = parser.add_subparsers(dest="command")
@@ -127,11 +158,15 @@ def main(argv: list[str] | None = None) -> int:
                              help="how the prompt chooses examples, in place of the setting")
     eval_parser.add_argument("--no-meaning", action="store_true", help="do not use the embedding model")
     eval_parser.add_argument("--show", action="store_true", help="show each real reply and each reply of the model")
+    scores_parser = commands.add_parser("scores", help="compare the saved scores")
+    scores_parser.add_argument("identity", nargs="?")
     arguments = parser.parse_args(argv)
 
     config = load_config()
     if arguments.command == "check":
         return check(config)
+    if arguments.command == "scores":
+        return scores(config, arguments.identity)
     if arguments.command == "eval":
         return evaluate(config, arguments.identity, arguments.cases, arguments.model,
                         meaning=not arguments.no_meaning, show=arguments.show, examples=arguments.examples,
