@@ -12,7 +12,9 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from typing import Protocol
 
+from mimikr.examples import ExampleIndex, recent_query
 from mimikr.identity import Identity
+from mimikr import prompt
 from mimikr.prompt import build_messages, split_reply
 from mimikr.rooms import Room, RoomMessage
 from mimikr.style import StyleProfile, build_profile
@@ -158,6 +160,7 @@ class Report:
     identity: str
     model: str
     temperature: float
+    examples: str
     training_messages: int
     style: StyleScore
     meaning: MeaningScore | None
@@ -193,21 +196,38 @@ def run_evaluation(
     test_fraction: float = 0.2,
     max_cases: int | None = None,
     progress: Callable[[int, int], None] | None = None,
+    examples: str = "recent",
+    example_embed: Embedder | None = None,
 ) -> Report:
-    """Let the model write each test reply, and score the replies."""
+    """Let the model write each test reply, and score the replies.
+
+    With examples = "similar", the index holds the training part only, so the
+    examples cannot hold a test reply.
+    """
     if identity.speaker is None:
         raise EvaluationError(f"the identity {identity.id!r} has no chat.md, so it has no real replies to compare")
     training, cases = split_cases(identity.transcript, identity.speaker, test_fraction)
     if max_cases:
         cases = cases[-max_cases:]
     trained = training_identity(identity, training)
+    if examples not in ("recent", "similar"):
+        raise EvaluationError(f"examples is {examples!r}. Use 'recent' or 'similar'")
+    index = None
+    if examples == "similar":
+        if example_embed is None:
+            raise EvaluationError("similar examples need an embedding model")
+        index = ExampleIndex.build(training, identity.speaker, example_embed)
 
     results = []
     for number, case in enumerate(cases, start=1):
         if progress:
             progress(number, len(cases))
+        exchanges = None
+        if index is not None:
+            query = recent_query([(message.speaker == identity.speaker, message.text) for message in case.context])
+            exchanges = index.select(query, example_embed, prompt.EXAMPLE_BUDGET)
         reply = completer.complete(
-            build_messages(trained, room_for(trained, case.context), names={}),
+            build_messages(trained, room_for(trained, case.context), names={}, exchanges=exchanges),
             model=model,
             temperature=temperature,
         )
@@ -225,6 +245,7 @@ def run_evaluation(
         identity=identity.id,
         model=model,
         temperature=temperature,
+        examples=examples,
         training_messages=len(training),
         style=score_style(real_turns, generated_turns),
         meaning=score_meaning(real_turns, generated_turns, embed) if embed else None,

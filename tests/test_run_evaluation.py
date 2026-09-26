@@ -87,3 +87,39 @@ def test_an_identity_with_no_chat_cannot_be_scored():
     identity = Identity(id="june", display_name="June", personality="A teacher.")
     with pytest.raises(EvaluationError, match="no chat.md"):
         run_evaluation(identity, Stranger(), model="m", temperature=0.5)
+
+
+def test_similar_examples_hold_no_test_reply(monkeypatch):
+    monkeypatch.setattr("mimikr.prompt.EXAMPLE_BUDGET", 200)
+    identity = sam()
+    oracle = Oracle(identity)
+    report = run_evaluation(identity, oracle, model="m", temperature=0.5,
+                            examples="similar", example_embed=WordEmbedder())
+    assert report.examples == "similar"
+    for request, result in zip(oracle.requests, report.results):
+        text = "\n".join(message["content"] for message in request)
+        assert not any(real in text for real in result.real)
+
+
+def test_similar_examples_match_the_question_of_the_case(monkeypatch):
+    monkeypatch.setattr("mimikr.prompt.EXAMPLE_BUDGET", 60)
+    lines = [("June", "want noodles for lunch"), ("Sam", "noodles always"),
+             ("June", "did you watch the match"), ("Sam", "we lost again"),
+             ("June", "how was the shift"), ("Sam", "chaos"),
+             ("June", "noodles again tonight"), ("Sam", "obviously")]
+    transcript = [Message(speaker, text) for speaker, text in lines]
+    identity = Identity(id="sam", display_name="Sam", personality="A cook.", speaker="Sam",
+                        transcript=transcript, style=build_profile(transcript, "Sam"))
+    completer = Stranger()
+    completer.requests = []
+    completer.complete = lambda messages, model, temperature: completer.requests.append(messages) or "ok"
+    run_evaluation(identity, completer, model="m", temperature=0.5, test_fraction=0.25,
+                   examples="similar", example_embed=WordEmbedder())
+    system = completer.requests[0][0]["content"]
+    assert "Sam: noodles always" in system
+    assert "we lost again" not in system and "chaos" not in system
+
+
+def test_similar_examples_need_an_embedder():
+    with pytest.raises(EvaluationError, match="need an embedding model"):
+        run_evaluation(sam(), Stranger(), model="m", temperature=0.5, examples="similar")
