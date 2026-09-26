@@ -298,3 +298,9 @@ def test_old_room_files_with_no_liked_field_still_load(tmp_path):
     data["messages"] = [{"author": "user", "name": "You", "text": "hi", "id": "abc", "time": "2026-01-01T00:00:00+00:00"}]
     path.write_text(json.dumps(data))
     assert engine.store.get(room.id).messages[0].liked is False
+
+
+def test_a_reply_that_starts_with_the_name_of_another_member_loses_the_name(tmp_path):
+    engine = make_engine(tmp_path, FakeModel(reply="bo: you are late\nbo: sorry"), people=("ana", "bo"))
+    room = engine.create_room("r", ["ana", "bo"])
+    assert [m.text for m in engine.speak(room, "ana")] == ["you are late"]

@@ -113,3 +113,24 @@ def test_the_last_message_goes_even_if_it_is_longer_than_the_budget():
     room.messages += [say(USER, "old"), say(USER, "x" * 100)]
     kept, trimmed = recent_messages(room.messages, budget=10)
     assert [m.text for m in kept] == ["x" * 100] and trimmed
+
+
+def test_split_reply_removes_the_name_of_another_person_on_the_first_line():
+    assert split_reply(ana(), "Bo: omg bro ur not in the server yet", ["Bo", "You"]) == ["omg bro ur not in the server yet"]
+
+
+def test_split_reply_ends_where_the_model_writes_for_another_person():
+    identity = ana()
+    identity.style = StyleProfile(message_count=10, messages_per_turn=3.0)
+    reply = "ok\nAna: sure\nBo: wait what\nAna: never mind"
+    assert split_reply(identity, reply, ["Bo"]) == ["ok", "sure"]
+
+
+def test_split_reply_keeps_a_colon_that_is_not_after_a_name():
+    assert split_reply(ana(), "note: bring cash", ["Bo"]) == ["note: bring cash"]
+
+
+def test_split_reply_removes_the_name_of_the_identity_in_the_transcript():
+    identity = ana([Message("ana_k", "hey"), Message("Bo", "yo")])
+    identity.speaker = "ana_k"
+    assert split_reply(identity, "ana_k: hello") == ["hello"]

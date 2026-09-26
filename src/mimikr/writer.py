@@ -53,8 +53,10 @@ def write_reply(identity: Identity, room: Room, names: dict[str, str], exchanges
     if mode == "chat":
         messages = build_messages(identity, room, names, exchanges, history_budget)
 
+        others = other_names(identity, room, names, exchanges)
+
         def split(reply: str) -> list[str]:
-            return split_reply(identity, reply)
+            return split_reply(identity, reply, others)
 
         if on_text and hasattr(completer, "stream_complete"):
             reply = collect(completer.stream_complete(messages, model, temperature), split, on_text)

@@ -116,15 +116,30 @@ def build_messages(identity: Identity, room: Room, names: dict[str, str],
     return [{"role": "system", "content": system_prompt(identity, room, names, exchanges)}, *turns]
 
 
-def split_reply(identity: Identity, reply: str) -> list[str]:
+def split_reply(identity: Identity, reply: str, others: list[str] | tuple[str, ...] = ()) -> list[str]:
     """Clean the reply of the model and split it into messages.
 
-    The function removes a name that the model puts before the text.
+    The function removes a name that the model puts before a line: the name of
+    the identity, or on the first line, the name of another person in the room.
+    A later line that starts with the name of another person ends the reply,
+    because there the model writes for somebody else.
     If the person often sends many short messages, each line becomes a message.
     """
-    prefix = re.compile(rf"^\s*{re.escape(identity.display_name)}\s*:\s*", re.IGNORECASE)
-    lines = [prefix.sub("", line).strip() for line in reply.strip().splitlines()]
-    lines = [line for line in lines if line]
+    own_names = {identity.display_name, identity.speaker or identity.display_name}
+    own = re.compile(r"^\s*(?:" + "|".join(re.escape(n) for n in own_names) + r")\s*:\s*", re.IGNORECASE)
+    other_names = [name for name in others if name not in own_names]
+    other = (re.compile(r"^\s*(?:" + "|".join(re.escape(n) for n in other_names) + r")\s*:\s*", re.IGNORECASE)
+             if other_names else None)
+    lines: list[str] = []
+    for number, line in enumerate(reply.strip().splitlines()):
+        if own.match(line):
+            line = own.sub("", line)
+        elif other and other.match(line):
+            if number > 0:
+                break
+            line = other.sub("", line)
+        if line.strip():
+            lines.append(line.strip())
     if not lines:
         return []
     if identity.style.messages_per_turn >= 1.5:
