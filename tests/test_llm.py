@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from mimikr.llm import ChatClient, LLMError
+from mimikr.llm import ChatClient, LLMError, clip_for_embedding
 
 
 def test_sends_an_openai_request_and_reads_the_reply():
@@ -139,3 +139,21 @@ def test_list_models_reads_the_ids():
     client = ChatClient("http://model.test/v1", "k", transport=httpx.MockTransport(
         lambda request: httpx.Response(200, json={"data": [{"id": "a"}, {"id": "b"}]})))
     assert client.list_models() == ["a", "b"]
+
+
+def test_a_long_text_is_cut_before_it_goes_to_the_embedding_model():
+    seen = {}
+
+    def handler(request):
+        seen["input"] = json.loads(request.content)["input"]
+        return httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0]}]})
+
+    client = ChatClient("http://model.test/v1", "k", transport=httpx.MockTransport(handler))
+    client.embed(["word " * 1000], model="e")
+    assert 0 < len(seen["input"][0]) <= 480 * 3
+
+
+def test_an_emoji_costs_more_than_a_letter():
+    assert clip_for_embedding("a" * 3000, budget=100) == "a" * 300
+    assert clip_for_embedding("😭" * 100, budget=30) == "😭" * 10
+    assert clip_for_embedding("short text") == "short text"

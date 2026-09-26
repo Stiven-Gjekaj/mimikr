@@ -14,6 +14,26 @@ class LLMError(RuntimeError):
     pass
 
 
+# The largest text, in estimated tokens, that goes to an embedding model. A
+# llama.cpp server refuses a text that is longer than its batch, which is 512
+# tokens by default.
+EMBED_TOKENS = 480
+
+
+def clip_for_embedding(text: str, budget: int = EMBED_TOKENS) -> str:
+    """Cut a text so that it fits the batch of an embedding server.
+
+    The estimate is high on purpose: a character of plain ASCII costs a third of
+    a token, and any other character, such as an emoji, costs three tokens.
+    """
+    used = 0.0
+    for index, character in enumerate(text):
+        used += 1 / 3 if ord(character) < 128 else 3
+        if used > budget:
+            return text[:index]
+    return text
+
+
 class ChatClient:
     def __init__(self, base_url: str, api_key: str, transport: httpx.BaseTransport | None = None):
         self._client = httpx.Client(
@@ -106,7 +126,8 @@ class ChatClient:
     def embed(self, texts: list[str], model: str) -> list[list[float]]:
         """Return one embedding for each text, in the same order."""
         try:
-            response = self._client.post("embeddings", json={"model": model, "input": texts})
+            response = self._client.post(
+                "embeddings", json={"model": model, "input": [clip_for_embedding(text) for text in texts]})
         except httpx.HTTPError as error:
             raise LLMError(f"cannot reach the model server at {self._client.base_url}: {error}") from error
         if response.status_code != 200:
