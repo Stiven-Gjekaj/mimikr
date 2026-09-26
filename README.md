@@ -13,6 +13,7 @@ _A short description, a transcript, and a model on your own computer._
 ![Linux](https://img.shields.io/badge/linux-a3e635?style=for-the-badge&logo=linux&logoColor=07090f)
 [![MIT licence](https://img.shields.io/badge/mit_licence-d9f99d?style=for-the-badge&logoColor=07090f)](LICENSE)
 
+[![CI](https://github.com/Stiven-Gjekaj/mimikr/actions/workflows/ci.yml/badge.svg)](https://github.com/Stiven-Gjekaj/mimikr/actions/workflows/ci.yml)
 ![Phase](https://img.shields.io/badge/phase-P4_open-34d399?style=flat-square&labelColor=07090f)
 ![Local](https://img.shields.io/badge/data-stays_local-a78bfa?style=flat-square&labelColor=07090f)
 
@@ -37,6 +38,7 @@ _A short description, a transcript, and a model on your own computer._
 > **The code of each phase is built, and P4 waits for a real run.**
 > The window shows replies while the model writes, the members can talk for a
 > number of turns, and `mimikr import` reads WhatsApp, Telegram and Discord.
+> The window edits identities, starts llama.cpp, and builds as a macOS app.
 > `mimikr eval` scores the chat mode and the continuation mode, with recent or
 > similar examples. The tests prove each part with a fake model.
 > No real model has run the score yet, so the defaults are not proven.
@@ -76,7 +78,10 @@ to each other.
 - **Writes like the person**, with a real sample of their messages in the
   prompt.
 - **Sends short messages in a row** when the person does.
-- **Holds rooms** with one or more identities.
+- **Keeps the habits** of the person: no capital, no period or no emoji in a
+  reply, if the person never uses them.
+- **Holds rooms** with one or more identities. The member that a message names
+  speaks next.
 
 </td>
 <td width="50%" valign="top">
@@ -88,7 +93,8 @@ to each other.
   OpenAI chat API.
 - It reads the files of an identity again for each reply, so an edit takes
   effect at once.
-- It never changes the files of an identity.
+- It changes the files of an identity only when you save in the identity
+  editor, or import a chat into it.
 - A native window, on macOS, Windows and Linux.
 
 </td>
@@ -98,6 +104,26 @@ to each other.
 ---
 
 ## Start
+
+### The macOS application
+
+A release does not exist yet. Build the application from the source, on a Mac
+with Apple silicon and macOS 13 or later:
+
+```bash
+scripts/build-macos-app.sh
+```
+
+The script writes `dist/mimikr.app` and a zip of it. The application keeps its
+settings, identities and rooms in `~/Documents/mimikr`. No paid certificate
+signs it, so macOS can refuse to open a copy that you download. Take the mark
+off, and it opens:
+
+```bash
+xattr -d com.apple.quarantine /Applications/mimikr.app
+```
+
+### From the source
 
 You need Python 3.11 or later, [uv](https://docs.astral.sh/uv/), and a local
 model server.
@@ -112,9 +138,16 @@ model on each server. Start one server for the chat model, and one for the
 embedding model:
 
 ```bash
-llama-server -m ~/Models/Mistral-Nemo-Instruct-2407-Q4_K_M.gguf --port 8080 --alias mistral-nemo
+llama-server -m ~/Models/Mistral-Nemo-Instruct-2407-Q4_K_M.gguf -c 8192 --port 8080 --alias mistral-nemo
 llama-server -m ~/Models/nomic-embed-text-v1.5.Q8_0.gguf --embeddings --port 8081 --alias nomic-embed-text
 ```
+
+`-c 8192` matters. With no `-c`, llama-server takes the context of the model
+file, which is 128k tokens for Mistral Nemo, and the memory for that context is
+more than a Mac with 16 GB has. mimikr sends about 3000 tokens of the room.
+
+The settings page can also start both servers for you. See
+[Settings](#settings).
 
 Then tell mimikr where they are, in `mimikr.toml`:
 
@@ -141,7 +174,13 @@ MIMIKR_IDENTITIES_DIR=examples/identities uv run mimikr
 
 ## Make an identity
 
-Make one directory for each identity in `identities/`:
+Click **Identities** in the sidebar, and **+ New identity**. Write the
+personality, and drop a chat export on the page, or click **Import a chat...**.
+mimikr asks which name in the chat is the person, and writes `chat.md`. It asks
+before it writes over a `chat.md` that exists.
+
+The editor writes the files below. You can also write them by hand. Make one
+directory for each identity in `identities/`:
 
 ```
 identities/
@@ -265,6 +304,16 @@ The count of messages for each name tells you which name to put in `speaker`.
   for that number of messages.
 - Click **Stop** to end the work. A reply that the model has not finished goes
   away, and nothing of it is saved.
+- Right-click a message to **Copy**, **Edit...** or **Delete** it. On the last
+  reply, **Write again** asks the model for a new one. **Like this reply** keeps
+  a good reply as an example for the later replies of that identity.
+- Search above the list of rooms finds rooms by name, by member, or by the text
+  of a message, and marks the messages that match.
+
+In a room with more members, the member that the last message names speaks
+next. Otherwise a random member speaks, but not the one that spoke last.
+With **Realistic timing** on, each message comes after about the time that a
+person takes to write it, and the text does not show while the model writes.
 
 mimikr keeps each room as a JSON file in `data/rooms/`.
 
@@ -411,8 +460,15 @@ and asks the embedding server for one embedding, before you save.
   <img src="assets/settings.png" alt="The settings page, in the light theme" width="820">
 </p>
 
-You can also edit `mimikr.toml` in the working directory, or set the
-environment variables. The environment variables have priority.
+**Local llama.cpp** starts `llama-server` for the chat model and for the
+embedding model, with the files, the ports and the context that you choose.
+mimikr uses the two servers at once, and stops them when you close the window.
+The output of each server goes to `data/logs/`.
+
+You can also edit `mimikr.toml`, or set the environment variables. The
+environment variables have priority. mimikr finds `mimikr.toml` in its home:
+`MIMIKR_HOME` if you set it, `~/Documents/mimikr` in the macOS application, and
+the working directory otherwise. A relative folder is relative to the file.
 
 | Key | Variable | Default |
 | :-- | :-- | :-- |
@@ -429,6 +485,15 @@ environment variables. The environment variables have priority.
 | `font_size` | `MIMIKR_FONT_SIZE` | `14`, from 12 to 18 |
 | `identities_dir` | `MIMIKR_IDENTITIES_DIR` | `identities` |
 | `data_dir` | `MIMIKR_DATA_DIR` | `data` |
+| `history_budget` | `MIMIKR_HISTORY_BUDGET` | `12000` characters of the room that go to the model |
+| `enforce_style` | `MIMIKR_ENFORCE_STYLE` | `true` |
+| `turn_taking` | `MIMIKR_TURN_TAKING` | `smart`. Or `rotate`, the order of the room. |
+| `realistic_timing` | `MIMIKR_REALISTIC_TIMING` | `true` |
+| `llama_server` | `MIMIKR_LLAMA_SERVER` | empty, which means the llama-server that the system finds |
+| `chat_gguf`, `embedding_gguf` | `MIMIKR_CHAT_GGUF`, `MIMIKR_EMBEDDING_GGUF` | empty |
+| `chat_port`, `embedding_port` | `MIMIKR_CHAT_PORT`, `MIMIKR_EMBEDDING_PORT` | `8080`, `8081` |
+| `context_size` | `MIMIKR_CONTEXT_SIZE` | `8192` tokens |
+| `start_servers` | `MIMIKR_START_SERVERS` | `false` |
 
 LM Studio uses `http://localhost:1234/v1`.
 
@@ -470,7 +535,9 @@ uv run pytest
 ```
 
 No test calls a real model. The window tests use the Qt `offscreen` platform,
-so they open no window.
+so they open no window. The tests of the local servers start a small program
+that answers like llama-server. CI runs the tests on macOS, Linux and Windows
+for each push.
 
 ---
 
