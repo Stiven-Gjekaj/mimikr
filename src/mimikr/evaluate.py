@@ -9,9 +9,13 @@ the first test turn. Thus the model cannot copy a real reply from its prompt.
 """
 
 import math
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field, replace
 from typing import Protocol
 
+from mimikr.identity import Identity
+from mimikr.prompt import build_messages, split_reply
+from mimikr.rooms import Room, RoomMessage
 from mimikr.style import StyleProfile, build_profile
 from mimikr.transcript import Message
 
@@ -149,3 +153,94 @@ def score_meaning(real_turns: list[list[str]], generated_turns: list[list[str]],
         pairs = [cosine(real_vectors[index], real_vectors[(index + 1) % len(real)]) for index in range(len(real))]
         baseline = sum(pairs) / len(pairs)
     return MeaningScore(score=sum(similarities) / len(similarities), baseline=baseline)
+
+
+class Completer(Protocol):
+    def complete(self, messages: list[dict], model: str, temperature: float) -> str: ...
+
+
+@dataclass
+class CaseResult:
+    # The last messages before the reply, as 'Name: text'.
+    context: list[str]
+    real: list[str]
+    generated: list[str]
+
+
+@dataclass
+class Report:
+    identity: str
+    model: str
+    temperature: float
+    training_messages: int
+    style: StyleScore
+    meaning: MeaningScore | None
+    results: list[CaseResult] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def training_identity(identity: Identity, training: list[Message]) -> Identity:
+    """Return a copy of the identity that knows only the training messages."""
+    return replace(identity, transcript=training, style=build_profile(training, identity.speaker))
+
+
+def room_for(identity: Identity, context: list[Message]) -> Room:
+    """Put the context of a case into a room, so that the prompt is the same as in a real room."""
+    room = Room(name="evaluation", members=[identity.id])
+    for message in context:
+        if message.speaker == identity.speaker:
+            author, name = identity.id, identity.display_name
+        else:
+            author, name = f"transcript:{message.speaker}", message.speaker
+        room.messages.append(RoomMessage(author=author, name=name, text=message.text))
+    return room
+
+
+def run_evaluation(
+    identity: Identity,
+    completer: Completer,
+    model: str,
+    temperature: float,
+    embed: Embedder | None = None,
+    test_fraction: float = 0.2,
+    max_cases: int | None = None,
+    progress: Callable[[int, int], None] | None = None,
+) -> Report:
+    """Let the model write each test reply, and score the replies."""
+    if identity.speaker is None:
+        raise EvaluationError(f"the identity {identity.id!r} has no chat.md, so it has no real replies to compare")
+    training, cases = split_cases(identity.transcript, identity.speaker, test_fraction)
+    if max_cases:
+        cases = cases[-max_cases:]
+    trained = training_identity(identity, training)
+
+    results = []
+    for number, case in enumerate(cases, start=1):
+        if progress:
+            progress(number, len(cases))
+        reply = completer.complete(
+            build_messages(trained, room_for(trained, case.context), names={}),
+            model=model,
+            temperature=temperature,
+        )
+        results.append(
+            CaseResult(
+                context=[f"{message.speaker}: {message.text}" for message in case.context[-4:]],
+                real=[message.text for message in case.reply],
+                generated=split_reply(trained, reply),
+            )
+        )
+
+    real_turns = [result.real for result in results]
+    generated_turns = [result.generated for result in results]
+    return Report(
+        identity=identity.id,
+        model=model,
+        temperature=temperature,
+        training_messages=len(training),
+        style=score_style(real_turns, generated_turns),
+        meaning=score_meaning(real_turns, generated_turns, embed) if embed else None,
+        results=results,
+    )
