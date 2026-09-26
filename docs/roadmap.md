@@ -150,8 +150,10 @@ These came after the plan of P1 to P7. Each is built and has tests.
 - Start llama.cpp from the settings page.
 - A macOS application, a release workflow, and a Homebrew cask.
 - CI on macOS, Linux and Windows.
+- Release 1.0.0: the application, its build provenance, and the cask in
+  stiven-gjekaj/tap.
 
 Still open:
 
 - P4: the run with the real model and a real transcript.
-- The first release: a tag, the draft, and the cask in the tap.
+
