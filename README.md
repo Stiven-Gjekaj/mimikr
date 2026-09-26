@@ -13,7 +13,7 @@ _A short description, a transcript, and a model on your own computer._
 ![Linux](https://img.shields.io/badge/linux-a3e635?style=for-the-badge&logo=linux&logoColor=07090f)
 [![MIT licence](https://img.shields.io/badge/mit_licence-d9f99d?style=for-the-badge&logoColor=07090f)](LICENSE)
 
-![Phase](https://img.shields.io/badge/phase-P1_done-34d399?style=flat-square&labelColor=07090f)
+![Phase](https://img.shields.io/badge/phase-P2_built-34d399?style=flat-square&labelColor=07090f)
 ![Local](https://img.shields.io/badge/data-stays_local-a78bfa?style=flat-square&labelColor=07090f)
 
 <p align="center">
@@ -21,6 +21,7 @@ _A short description, a transcript, and a model on your own computer._
   <a href="#start"><b>Start</b></a> |
   <a href="#make-an-identity"><b>Identities</b></a> |
   <a href="#rooms"><b>Rooms</b></a> |
+  <a href="#score-an-identity"><b>Score</b></a> |
   <a href="#how-a-reply-is-made"><b>How it works</b></a> |
   <a href="docs/roadmap.md"><b>Roadmap</b></a>
 </p>
@@ -32,12 +33,13 @@ _A short description, a transcript, and a model on your own computer._
 ---
 
 > [!NOTE]
-> **Phase P1 is built.**
-> The window, the rooms, the identity files and the style profile work, and
-> the tests prove them with a fake model.
-> No score of the replies exists yet. [docs/roadmap.md](docs/roadmap.md) says
-> what comes next, and [docs/milestones.md](docs/milestones.md) holds each
-> decision and the reason for it.
+> **Phases P1 and P2 are built.**
+> The window, the rooms, the identity files and the style profile work.
+> `mimikr eval` scores the replies of a model against the real replies.
+> The tests prove both with a fake model. No real model has run the score yet.
+> [docs/roadmap.md](docs/roadmap.md) says what comes next, and
+> [docs/milestones.md](docs/milestones.md) holds each decision and the reason
+> for it.
 
 ---
 
@@ -179,6 +181,59 @@ mimikr keeps each room as a JSON file in `data/rooms/`.
 
 ---
 
+## Score an identity
+
+`mimikr eval` tells how near the replies of a model are to the real replies of
+the person:
+
+```bash
+uv run mimikr eval sam --show
+```
+
+1. It keeps the last 20 percent of the turns of the person apart from the
+   transcript.
+2. The identity learns its style from the part before those turns only, so the
+   model cannot copy a real reply from its prompt.
+3. The model sees the conversation up to each test turn, and writes a reply.
+4. The **style** score compares the style of all model replies with the style
+   of all real replies. 1 is the same style.
+5. The **meaning** score compares each model reply with its real reply through
+   an embedding model. The report also gives the score of two different real
+   replies. A model that scores near that number does no better than a random
+   reply of the person.
+
+This report shows its shape only. A stand-in server wrote the reply, and no
+real model did:
+
+```
+sam, model llama3.1, temperature 0.8
+1 test reply, 15 training messages
+Warning: a score from fewer than 10 test replies is not reliable.
+
+style    0.86
+  feature                 real   model
+  median_words            2.00    3.00
+  lowercase_start         1.00    1.00
+  ends_with_period        0.00    0.00
+  exclamation_rate        0.00    0.00
+  emoji_rate              0.00    0.00
+  messages_per_turn       1.00    2.00
+```
+
+The meaning score needs an embedding model on the model server:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+`--model` tries a different model, `--cases N` scores only the last N test
+replies, and `--no-meaning` skips the embedding model.
+Each report goes to `data/evals/` as JSON, so you can compare models later.
+The model writes different replies each time, so run a score two times before
+you trust a small difference.
+
+---
+
 ## How a reply is made
 
 ```mermaid
@@ -212,6 +267,7 @@ environment variables. The environment variables have priority.
 | `api_key` | `MIMIKR_API_KEY` | `local` |
 | `model` | `MIMIKR_MODEL` | `llama3.1` |
 | `temperature` | `MIMIKR_TEMPERATURE` | `0.8` |
+| `embedding_model` | `MIMIKR_EMBEDDING_MODEL` | `nomic-embed-text` |
 | `identities_dir` | `MIMIKR_IDENTITIES_DIR` | `identities` |
 | `data_dir` | `MIMIKR_DATA_DIR` | `data` |
 

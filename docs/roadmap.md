@@ -10,7 +10,8 @@ This file says in what order to build it.
 Each phase has a goal, the work in it, and an exit test.
 The sizes are relative: S is a day or two, M is a week, and L is longer.
 
-P1 is done.
+P1 is done. P2 is built, and its exit test passes with a fake model and a fake
+embedding model. No real model has run it yet.
 
 ---
 
@@ -46,7 +47,7 @@ flowchart LR
 **Exit test:** a room with two identities replies to the user, and `Next
 speaker` lets the identities talk in turn. Tests with a fake model prove both.
 
-## P2: the score (M)
+## P2: the score (built)
 
 **Goal:** a number that says how near the replies are to the person.
 
@@ -58,6 +59,11 @@ speaker` lets the identities talk in turn. Tests with a fake model prove both.
 
 **Exit test:** the score of the real replies against themselves is the best
 score. The score of the replies of a different person is worse.
+
+`tests/test_run_evaluation.py` holds the exit test. The real replies score 1
+for style and 1 for meaning. One long, formal reply scores below 0.6 for style,
+and below the baseline for meaning. Two more tests prove that the model never sees
+the reply that it must write.
 
 ## P3: similar examples (M)
 
