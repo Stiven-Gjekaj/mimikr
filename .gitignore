@@ -20,3 +20,6 @@ __pycache__/
 .pytest_cache/
 /build/
 /dist/
+
+# PyInstaller writes this file at each build.
+/mimikr.spec
