@@ -20,6 +20,10 @@ class Config:
     api_key: str = "local"
     model: str = "llama3.1"
     temperature: float = 0.8
+    # How the prompt chooses examples from the transcript: "recent" takes the
+    # end of the transcript, and "similar" takes the exchanges most similar to
+    # the current message. "similar" needs the embedding model.
+    examples: str = "recent"
     # The model that `mimikr eval` uses to compare the meaning of two replies.
     embedding_model: str = "nomic-embed-text"
     # The server of the embedding model. Empty means the server in base_url.

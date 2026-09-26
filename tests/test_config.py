@@ -25,3 +25,8 @@ def test_the_file_sets_the_embedding_model(tmp_path):
 def test_the_embeddings_use_the_chat_server_when_no_embedding_url_is_set():
     assert embedding_base_url(Config(base_url="http://chat/v1")) == "http://chat/v1"
     assert embedding_base_url(Config(base_url="http://chat/v1", embedding_url="http://embed/v1")) == "http://embed/v1"
+
+
+def test_the_examples_are_recent_by_default_and_the_environment_can_change_them(tmp_path):
+    assert load_config(tmp_path / "missing.toml", environ={}).examples == "recent"
+    assert load_config(tmp_path / "missing.toml", environ={"MIMIKR_EXAMPLES": "similar"}).examples == "similar"
