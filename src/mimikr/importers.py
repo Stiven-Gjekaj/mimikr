@@ -108,3 +108,22 @@ def read_telegram(text: str) -> list[Message]:
             time = str(item.get("date", "")).replace("T", " ") or None
             messages.append(Message(speaker=item.get("from") or "Deleted Account", text=body, time=time))
     return messages
+
+
+def read_discord(text: str) -> list[Message]:
+    """Read the JSON export of one channel from DiscordChatExporter.
+
+    The reader uses the nickname of the author, or the user name if there is no
+    nickname. It skips system messages, and an attachment with no text.
+    """
+    messages = []
+    for item in _load_json(text, "DiscordChatExporter")["messages"]:
+        if item.get("type", "Default") not in ("Default", "Reply"):
+            continue
+        body = str(item.get("content") or "").strip()
+        author = item.get("author") or {}
+        if body:
+            speaker = author.get("nickname") or author.get("name") or "Unknown"
+            time = str(item.get("timestamp", ""))[:19].replace("T", " ") or None
+            messages.append(Message(speaker=speaker, text=body, time=time))
+    return messages

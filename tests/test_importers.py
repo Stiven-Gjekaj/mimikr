@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from mimikr.importers import ExportError, clean_name, read_telegram, read_whatsapp, write_transcript
+from mimikr.importers import ExportError, clean_name, read_discord, read_telegram, read_whatsapp, write_transcript
 from mimikr.transcript import Message, parse_transcript
 
 
@@ -105,3 +105,30 @@ def test_refuses_the_export_of_all_telegram_chats():
 def test_refuses_a_file_that_is_not_json():
     with pytest.raises(ExportError, match="not the JSON export of Telegram Desktop"):
         read_telegram("12/31/23, 9:41 PM - June: hi")
+
+
+DISCORD = {
+    "guild": {"name": "Friends"},
+    "channel": {"name": "general"},
+    "messages": [
+        {"type": "Default", "timestamp": "2024-01-01T10:00:00.123+00:00", "content": "noodles?",
+         "author": {"name": "june_92", "nickname": "June"}},
+        {"type": "Reply", "timestamp": "2024-01-01T10:01:00+00:00", "content": "say less",
+         "author": {"name": "sam.cooks", "nickname": None}},
+        {"type": "ChannelPinnedMessage", "timestamp": "2024-01-01T10:02:00+00:00", "content": "pinned",
+         "author": {"name": "sam.cooks"}},
+        {"type": "Default", "timestamp": "2024-01-01T10:03:00+00:00", "content": "",
+         "author": {"name": "sam.cooks"}, "attachments": [{"fileName": "cat.png"}]},
+    ],
+}
+
+
+def test_reads_a_discord_export():
+    messages = read_discord(json.dumps(DISCORD))
+    assert [(m.speaker, m.text) for m in messages] == [("June", "noodles?"), ("sam.cooks", "say less")]
+    assert messages[0].time == "2024-01-01 10:00:00"
+
+
+def test_refuses_json_that_is_not_a_chat_export():
+    with pytest.raises(ExportError, match="one chat in DiscordChatExporter"):
+        read_discord(json.dumps({"hello": "world"}))
