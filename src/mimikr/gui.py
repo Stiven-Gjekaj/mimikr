@@ -13,7 +13,16 @@ from dataclasses import fields, replace
 from pathlib import Path
 
 from PySide6.QtCore import QLocale, QObject, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QFontMetrics, QGuiApplication, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QFontMetrics,
+    QGuiApplication,
+    QImage,
+    QKeySequence,
+    QPainter,
+    QPainterPath,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -39,6 +48,7 @@ from PySide6.QtWidgets import (
 )
 
 from mimikr import theme
+from mimikr.avatars import AvatarStore
 from mimikr.config import Config, embedding_base_url, save_config
 from mimikr.engine import EngineError, RoomEngine
 from mimikr.llm import ChatClient, LLMError
@@ -51,11 +61,54 @@ AVATAR_SIZE = 28
 EMPTY_PAGE, ROOM_PAGE, SETTINGS_PAGE = 0, 1, 2
 
 
-def avatar(key: str, name: str, size: int = AVATAR_SIZE) -> QLabel:
-    """Return a round picture with the initials of a name, in the color of the key."""
-    label = QLabel(theme.initials(name), objectName="avatar", alignment=Qt.AlignmentFlag.AlignCenter)
+_round_pictures: dict[tuple[str, float, int, float], QPixmap] = {}
+
+
+def round_picture(path: Path, size: int, ratio: float = 2.0) -> QPixmap | None:
+    """Return the picture cut to a circle of the size, or None if the file is not a picture.
+
+    The middle square of the picture fills the circle. The result stays in a
+    cache until the file changes.
+    """
+    try:
+        key = (str(path), path.stat().st_mtime, size, ratio)
+    except OSError:
+        return None
+    if key in _round_pictures:
+        return _round_pictures[key]
+    image = QImage(str(path))
+    if image.isNull():
+        return None
+    pixels = round(size * ratio)
+    side = min(image.width(), image.height())
+    square = image.copy((image.width() - side) // 2, (image.height() - side) // 2, side, side)
+    square = square.scaled(pixels, pixels, Qt.AspectRatioMode.IgnoreAspectRatio,
+                           Qt.TransformationMode.SmoothTransformation)
+    result = QPixmap(pixels, pixels)
+    result.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(result)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    circle = QPainterPath()
+    circle.addEllipse(0, 0, pixels, pixels)
+    painter.setClipPath(circle)
+    painter.drawImage(0, 0, square)
+    painter.end()
+    result.setDevicePixelRatio(ratio)
+    _round_pictures[key] = result
+    return result
+
+
+def avatar(key: str, name: str, size: int = AVATAR_SIZE, picture: Path | None = None) -> QLabel:
+    """Return a round picture. With no picture file, show the initials of the name in the color of the key."""
+    label = QLabel(objectName="avatar", alignment=Qt.AlignmentFlag.AlignCenter)
     label.setFixedSize(size, size)
-    label.setStyleSheet(f"background: {theme.avatar_color(key)}; border-radius: {size // 2}px;")
+    pixmap = round_picture(picture, size) if picture else None
+    if pixmap is not None:
+        label.setPixmap(pixmap)
+        label.setStyleSheet("background: transparent;")
+    else:
+        label.setText(theme.initials(name))
+        label.setStyleSheet(f"background: {theme.avatar_color(key)}; border-radius: {size // 2}px;")
     return label
 
 
@@ -175,6 +228,8 @@ class MessageView(QScrollArea):
         # The size of the font in the style sheet. A new label has no parent yet
         # when fit() measures it, so the style sheet does not apply to it then.
         self.font_px = 14
+        # The window sets this to find the picture of an author.
+        self.picture_for: Callable[[str], Path | None] = lambda author: None
         bar = self.verticalScrollBar()
         bar.rangeChanged.connect(lambda _minimum, maximum: bar.setValue(maximum))
 
@@ -210,7 +265,7 @@ class MessageView(QScrollArea):
         line = QHBoxLayout(row)
         line.setContentsMargins(0, 12, 0, 2)
         line.setSpacing(8)
-        line.addWidget(avatar(author, name))
+        line.addWidget(avatar(author, name, picture=self.picture_for(author)))
         line.addWidget(QLabel(name, objectName="name"))
         line.addStretch(1)
         return row
@@ -528,6 +583,7 @@ class MainWindow(QMainWindow):
                  reconnect: Callable[[Config], None] | None = None):
         super().__init__()
         self.engine = engine
+        self.avatars = AvatarStore(engine.config.data_dir, engine.config.identities_dir)
         self.config_path = config_path
         # The window calls this after a save, so that new server settings take effect.
         self.reconnect = reconnect
@@ -639,6 +695,7 @@ class MainWindow(QMainWindow):
         head.addWidget(delete, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         self.view = MessageView()
+        self.view.picture_for = lambda author: self.avatars.find("identity", author)
 
         self.status = QLabel(objectName="status")
         self.next_button = QPushButton("Next speaker")
@@ -764,7 +821,8 @@ class MainWindow(QMainWindow):
         line.setContentsMargins(10, 8, 10, 8)
         line.setSpacing(10)
         first = room.members[0] if room.members else room.id
-        line.addWidget(avatar(first, self.names([first]) or room.name, 32))
+        picture = self.avatars.find("room", room.id) or (self.avatars.find("identity", first) if room.members else None)
+        line.addWidget(avatar(first, self.names([first]) or room.name, 32, picture))
         text = QVBoxLayout()
         text.setSpacing(1)
         title = QLabel(room.name, objectName="roomTitle")

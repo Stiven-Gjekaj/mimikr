@@ -285,3 +285,57 @@ def test_test_connection_checks_the_fields_before_a_save(application, tmp_path):
     assert page.check_result.text() == "OK: Chat server: 1 model (mistral-nemo).\nFault: Embedding server: refused."
     # The check does not change the settings.
     assert window.engine.config.base_url != "http://localhost:8080/v1"
+
+
+def write_picture(path, width=40, height=20, color="red"):
+    from PySide6.QtGui import QColor, QImage
+
+    image = QImage(width, height, QImage.Format.Format_ARGB32)
+    image.fill(QColor(color))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    assert image.save(str(path))
+    return path
+
+
+def avatars_in(widget):
+    return [label for label in widget.findChildren(QLabel) if label.objectName() == "avatar"]
+
+
+def test_an_identity_with_a_picture_shows_it_and_one_with_none_shows_initials(application, tmp_path):
+    from mimikr.rooms import RoomMessage
+
+    window = make_window(tmp_path, FakeModel())
+    write_picture(tmp_path / "identities" / "ana" / "avatar.png")
+    window.view.add(RoomMessage(author="ana", name="ana", text="hi"))
+    window.view.add(RoomMessage(author="bo", name="bo", text="yo"))
+    ana, bo = avatars_in(window.view)
+    assert not ana.pixmap().isNull() and ana.text() == ""
+    assert bo.pixmap().isNull() and bo.text() == "B"
+
+
+def test_the_picture_is_a_circle_from_the_middle_of_the_image(application, tmp_path):
+    from mimikr.gui import round_picture
+
+    pixmap = round_picture(write_picture(tmp_path / "wide.png", 80, 20), 28)
+    image = pixmap.toImage()
+    assert image.width() == image.height() == 56
+    # The corner is outside the circle, and the middle is inside it.
+    assert image.pixelColor(0, 0).alpha() == 0
+    assert image.pixelColor(28, 28).red() == 255
+
+
+def test_a_file_that_is_not_a_picture_shows_the_initials(application, tmp_path):
+    from mimikr.gui import avatar
+
+    broken = tmp_path / "avatar.png"
+    broken.write_bytes(b"not a png")
+    assert avatar("ana", "ana", picture=broken).text() == "A"
+
+
+def test_a_room_card_shows_the_picture_of_the_room(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    room = window.engine.create_room("r", ["ana"])
+    write_picture(window.avatars.path_for("room", room.id))
+    window.reload_rooms()
+    [picture] = avatars_in(window.rooms.itemWidget(window.rooms.item(0)))
+    assert not picture.pixmap().isNull()
