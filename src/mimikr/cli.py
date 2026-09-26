@@ -5,17 +5,21 @@
 - `mimikr eval <identity>`: score how near the replies of the model are to the
   real replies of the person.
 - `mimikr scores [identity]`: compare the saved scores.
+- `mimikr import <format> <file>`: turn a chat export into chat.md lines.
 """
 
 import argparse
 import json
 import re
 import sys
+from collections import Counter
 from datetime import datetime
+from pathlib import Path
 
 from mimikr.config import Config, embedding_base_url, load_config
 from mimikr.evaluate import STYLE_FEATURES, EvaluationError, Report, run_evaluation
 from mimikr.identity import list_identities
+from mimikr.importers import ExportError, read_discord, read_telegram, read_whatsapp, write_transcript
 from mimikr.llm import ChatClient, LLMError
 
 
@@ -143,6 +147,36 @@ def scores(config: Config, name: str | None) -> int:
     return 0
 
 
+READERS = {"whatsapp": read_whatsapp, "telegram": read_telegram, "discord": read_discord}
+
+
+def import_export(kind: str, source: Path, output: Path | None, force: bool) -> int:
+    """Write a chat export as chat.md lines, to a file or to the standard output."""
+    try:
+        messages = READERS[kind](source.read_text(encoding="utf-8-sig"))
+    except OSError as error:
+        print(f"mimikr: cannot read {source}: {error.strerror}", file=sys.stderr)
+        return 1
+    except ExportError as error:
+        print(f"mimikr: {error}", file=sys.stderr)
+        return 1
+    text = write_transcript(messages)
+    if output is None:
+        sys.stdout.write(text)
+    else:
+        if output.exists() and not force:
+            print(f"mimikr: {output} exists. Use --force to write over it", file=sys.stderr)
+            return 1
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text, encoding="utf-8")
+    counts = Counter(message.speaker for message in messages)
+    names = ", ".join(f"{name} ({count})" for name, count in counts.most_common())
+    print(f"{len(messages)} messages from {names or 'nobody'}", file=sys.stderr)
+    if output is not None:
+        print(f"Wrote {output}", file=sys.stderr)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mimikr")
     commands = parser.add_subparsers(dest="command")
@@ -160,7 +194,15 @@ def main(argv: list[str] | None = None) -> int:
     eval_parser.add_argument("--show", action="store_true", help="show each real reply and each reply of the model")
     scores_parser = commands.add_parser("scores", help="compare the saved scores")
     scores_parser.add_argument("identity", nargs="?")
+    import_parser = commands.add_parser("import", help="turn a chat export into chat.md lines")
+    import_parser.add_argument("format", choices=sorted(READERS))
+    import_parser.add_argument("file", type=Path)
+    import_parser.add_argument("--output", "-o", type=Path, help="write to this file, for example identities/sam/chat.md")
+    import_parser.add_argument("--force", action="store_true", help="write over the output file")
     arguments = parser.parse_args(argv)
+
+    if arguments.command == "import":
+        return import_export(arguments.format, arguments.file, arguments.output, arguments.force)
 
     config = load_config()
     if arguments.command == "check":

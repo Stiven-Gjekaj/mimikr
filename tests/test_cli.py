@@ -1,6 +1,6 @@
 import json
 
-from mimikr.cli import evaluate, scores
+from mimikr.cli import evaluate, import_export, scores
 from mimikr.config import Config
 
 
@@ -147,3 +147,43 @@ def test_scores_skips_a_damaged_file(tmp_path, capsys):
 def test_scores_with_no_reports_says_what_to_do(tmp_path, capsys):
     assert scores(make_config(tmp_path), None) == 1
     assert "Run `mimikr eval <identity>` first." in capsys.readouterr().out
+
+
+WHATSAPP = "\ufeff1/1/24, 10:00 AM - June: noodles?\n1/1/24, 10:01 AM - Sam: say less\n1/1/24, 10:02 AM - Sam: 1pm\n"
+
+
+def test_import_writes_the_transcript_and_counts_the_speakers(tmp_path, capsys):
+    source = tmp_path / "chat.txt"
+    source.write_text(WHATSAPP, encoding="utf-8")
+    output = tmp_path / "identities" / "sam" / "chat.md"
+    assert import_export("whatsapp", source, output, force=False) == 0
+    assert output.read_text(encoding="utf-8") == (
+        "[1/1/24 10:00 AM] June: noodles?\n[1/1/24 10:01 AM] Sam: say less\n[1/1/24 10:02 AM] Sam: 1pm\n"
+    )
+    assert "3 messages from Sam (2), June (1)" in capsys.readouterr().err
+
+
+def test_import_does_not_write_over_a_file(tmp_path, capsys):
+    source = tmp_path / "chat.txt"
+    source.write_text(WHATSAPP, encoding="utf-8")
+    output = tmp_path / "chat.md"
+    output.write_text("Sam: keep me\n", encoding="utf-8")
+    assert import_export("whatsapp", source, output, force=False) == 1
+    assert output.read_text(encoding="utf-8") == "Sam: keep me\n"
+    assert "Use --force" in capsys.readouterr().err
+    assert import_export("whatsapp", source, output, force=True) == 0
+    assert "say less" in output.read_text(encoding="utf-8")
+
+
+def test_import_with_no_output_writes_to_the_standard_output(tmp_path, capsys):
+    source = tmp_path / "chat.txt"
+    source.write_text(WHATSAPP, encoding="utf-8")
+    assert import_export("whatsapp", source, None, force=False) == 0
+    assert capsys.readouterr().out.startswith("[1/1/24 10:00 AM] June: noodles?")
+
+
+def test_import_reports_a_wrong_format(tmp_path, capsys):
+    source = tmp_path / "chat.txt"
+    source.write_text(WHATSAPP, encoding="utf-8")
+    assert import_export("telegram", source, None, force=False) == 1
+    assert "not the JSON export of Telegram Desktop" in capsys.readouterr().err
