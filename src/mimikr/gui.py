@@ -8,6 +8,8 @@ Only one worker runs at a time.
 import sys
 import threading
 
+from collections.abc import Callable
+
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence, QPalette
 from PySide6.QtWidgets import (
@@ -24,6 +26,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QSplitter,
     QStackedWidget,
     QVBoxLayout,
@@ -38,6 +41,10 @@ from mimikr.rooms import USER, Room, RoomMessage
 BUBBLE_WIDTH = 520
 
 
+class Stopped(Exception):
+    """The user clicked Stop while the model wrote."""
+
+
 class Bridge(QObject):
     """Carry events from the worker thread to the window."""
 
@@ -46,6 +53,7 @@ class Bridge(QObject):
     # The room, the author, the name and the text so far of a reply that the model still writes.
     partial = Signal(str, str, str, str)
     failed = Signal(str, str)
+    notice = Signal(str, str)
     idle = Signal(str)
 
 
@@ -201,6 +209,8 @@ class MainWindow(QMainWindow):
         self.bridge.typing.connect(self.on_typing)
         self.bridge.partial.connect(self.on_partial)
         self.bridge.failed.connect(self.on_failed)
+        self.bridge.notice.connect(self.on_notice)
+        self.stop_event = threading.Event()
         self.bridge.idle.connect(self.on_idle)
 
         self.setWindowTitle("mimikr")
@@ -246,12 +256,21 @@ class MainWindow(QMainWindow):
         self.next_button = QPushButton("Next speaker")
         self.next_button.setToolTip("The next member of the room writes a message.")
         self.next_button.clicked.connect(self.next_speaker)
+        self.turns = QSpinBox(minimum=1, maximum=200, value=10, suffix=" turns")
+        self.turns.setToolTip("The number of messages in an automatic conversation.")
+        self.auto_button = QPushButton("Auto")
+        self.auto_button.setToolTip("The members talk to each other for the number of turns. Click Stop to end.")
+        self.auto_button.clicked.connect(self.auto_or_stop)
         controls = QHBoxLayout()
         controls.addWidget(self.composer, 1)
         buttons = QVBoxLayout()
         buttons.addWidget(self.send_button)
         buttons.addWidget(self.next_button)
         controls.addLayout(buttons)
+        automatic = QVBoxLayout()
+        automatic.addWidget(self.turns)
+        automatic.addWidget(self.auto_button)
+        controls.addLayout(automatic)
 
         room_page = QWidget()
         room_layout = QVBoxLayout(room_page)
@@ -379,6 +398,8 @@ class MainWindow(QMainWindow):
         self.busy = busy
         self.send_button.setEnabled(not busy)
         self.next_button.setEnabled(not busy)
+        self.turns.setEnabled(not busy)
+        self.auto_button.setText("Stop" if busy else "Auto")
 
     def send(self) -> None:
         text = self.composer.toPlainText().strip()
@@ -386,30 +407,61 @@ class MainWindow(QMainWindow):
             return
         self.composer.clear()
         self.view.add(self.engine.post_user_message(self.room, text))
-        self.start(self.room.members)
+        members = iter(self.room.members)
+        self.start(lambda room: next(members, None))
 
     def next_speaker(self) -> None:
         if self.room is None or self.busy:
             return
-        self.start([self.room.next_speaker()])
+        members = iter([self.room.next_speaker()])
+        self.start(lambda room: next(members, None))
 
-    def start(self, members: list[str]) -> None:
-        """Let the members write in order, in a worker thread."""
+    def auto_or_stop(self) -> None:
+        """Start an automatic conversation, or stop the work that runs."""
+        if self.busy:
+            self.stop_event.set()
+            return
+        if self.room is None:
+            return
+        remaining = [self.turns.value()]
+
+        def next_member(room: Room) -> str | None:
+            if remaining[0] == 0:
+                return None
+            remaining[0] -= 1
+            return room.next_speaker()
+
+        self.start(next_member)
+
+    def start(self, next_member: Callable[[Room], str | None]) -> None:
+        """Let members write in a worker thread, until next_member gives None or the user stops."""
         room = self.room
+        self.stop_event = threading.Event()
+        stop = self.stop_event
         self.set_busy(True)
         self.set_status("")
 
         def work() -> None:
             try:
-                for member in members:
+                while not stop.is_set():
+                    member = next_member(room)
+                    if member is None:
+                        break
                     identities, _ = self.engine.identities()
                     name = identities[member].display_name if member in identities else member
                     self.bridge.typing.emit(room.id, name)
+
                     def on_text(text: str, member: str = member, name: str = name) -> None:
+                        if stop.is_set():
+                            raise Stopped
                         self.bridge.partial.emit(room.id, member, name, text)
 
                     for message in self.engine.speak(room, member, on_text=on_text):
                         self.bridge.message.emit(room.id, message)
+                if stop.is_set():
+                    raise Stopped
+            except Stopped:
+                self.bridge.notice.emit(room.id, "Stopped.")
             except (EngineError, LLMError) as error:
                 self.bridge.failed.emit(room.id, str(error))
             finally:
@@ -432,6 +484,11 @@ class MainWindow(QMainWindow):
         if self.is_open(room_id):
             self.view.show_draft(author, name, text)
 
+    def on_notice(self, room_id: str, text: str) -> None:
+        if self.is_open(room_id):
+            self.view.clear_draft()
+            self.set_status(text)
+
     def on_failed(self, room_id: str, detail: str) -> None:
         if self.is_open(room_id):
             self.view.clear_draft()
@@ -443,7 +500,7 @@ class MainWindow(QMainWindow):
             self.view.clear_draft()
             # The worker changed its own copy of the room. Load the saved copy.
             self.room = self.engine.store.get(room_id)
-            if not self.status.styleSheet():
+            if not self.status.styleSheet() and self.status.text() != "Stopped.":
                 self.set_status("")
 
 

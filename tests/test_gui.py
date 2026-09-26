@@ -115,3 +115,68 @@ def test_a_draft_is_not_a_message(application, tmp_path):
     assert view.texts() == []
     view.clear_draft()
     assert view.draft is None
+
+
+def test_auto_lets_the_members_talk_for_the_number_of_turns(application, tmp_path):
+    window = make_window(tmp_path, FakeModel())
+    room = window.engine.create_room("r", ["ana", "bo"])
+    window.select_room(room.id)
+    window.turns.setValue(10)
+    window.auto_or_stop()
+    assert window.auto_button.text() == "Stop"
+    wait_until_idle(application, window)
+    authors = [m.author for m in window.engine.store.get(room.id).messages]
+    assert authors == ["ana", "bo"] * 5
+    assert window.auto_button.text() == "Auto"
+
+
+class StopAfter(FakeModel):
+    """Click Stop from inside the third reply, as a user who clicks during a turn."""
+
+    def __init__(self, window_holder, count):
+        super().__init__()
+        self.window_holder = window_holder
+        self.count = count
+        self.calls = 0
+
+    def complete(self, messages, model, temperature):
+        self.calls += 1
+        if self.calls == self.count:
+            self.window_holder[0].stop_event.set()
+        return "hi"
+
+
+def test_stop_ends_an_automatic_conversation_after_the_current_turn(application, tmp_path):
+    holder = []
+    window = make_window(tmp_path, StopAfter(holder, 3))
+    holder.append(window)
+    room = window.engine.create_room("r", ["ana", "bo"])
+    window.select_room(room.id)
+    window.auto_or_stop()
+    wait_until_idle(application, window)
+    assert len(window.engine.store.get(room.id).messages) == 3
+    assert window.status.text() == "Stopped."
+
+
+class StopWhileWriting(FakeModel):
+    def __init__(self, window_holder):
+        super().__init__()
+        self.window_holder = window_holder
+
+    def stream_complete(self, messages, model, temperature):
+        yield "half"
+        self.window_holder[0].stop_event.set()
+        yield " of a reply"
+
+
+def test_stop_while_the_model_writes_keeps_no_part_of_the_reply(application, tmp_path):
+    holder = []
+    window = make_window(tmp_path, StopWhileWriting(holder))
+    holder.append(window)
+    room = window.engine.create_room("r", ["ana"])
+    window.select_room(room.id)
+    window.auto_or_stop()
+    wait_until_idle(application, window)
+    assert window.engine.store.get(room.id).messages == []
+    assert window.view.texts() == [] and window.view.draft is None
+    assert window.status.text() == "Stopped."
