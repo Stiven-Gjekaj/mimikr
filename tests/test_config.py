@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mimikr.config import Config, load_config
+from mimikr.config import Config, embedding_base_url, load_config
 
 
 def test_uses_the_defaults_when_nothing_is_set(tmp_path):
@@ -20,3 +20,8 @@ def test_the_file_sets_the_embedding_model(tmp_path):
     path = tmp_path / "mimikr.toml"
     path.write_text('embedding_model = "mxbai-embed-large"\n', encoding="utf-8")
     assert load_config(path, environ={}).embedding_model == "mxbai-embed-large"
+
+
+def test_the_embeddings_use_the_chat_server_when_no_embedding_url_is_set():
+    assert embedding_base_url(Config(base_url="http://chat/v1")) == "http://chat/v1"
+    assert embedding_base_url(Config(base_url="http://chat/v1", embedding_url="http://embed/v1")) == "http://embed/v1"

@@ -12,7 +12,7 @@ import re
 import sys
 from datetime import datetime
 
-from mimikr.config import Config, load_config
+from mimikr.config import Config, embedding_base_url, load_config
 from mimikr.evaluate import STYLE_FEATURES, EvaluationError, Report, run_evaluation
 from mimikr.identity import list_identities
 from mimikr.llm import ChatClient, LLMError
@@ -68,18 +68,21 @@ def print_report(report: Report, show: bool) -> None:
 
 
 def evaluate(config: Config, name: str, cases: int | None, model: str | None, meaning: bool,
-             show: bool, client=None) -> int:
+             show: bool, client=None, embed_client=None) -> int:
     identities, errors = list_identities(config.identities_dir)
     if name not in identities:
         print(f"mimikr: {errors.get(name) or f'no identity is named {name!r}'}", file=sys.stderr)
         return 1
     identity = identities[name]
     client = client or ChatClient(config.base_url, config.api_key)
+    if embed_client is None:
+        embed_url = embedding_base_url(config)
+        embed_client = client if embed_url == config.base_url else ChatClient(embed_url, config.api_key)
     model = model or identity.model or config.model
     temperature = identity.temperature if identity.temperature is not None else config.temperature
 
     def embed(texts: list[str]) -> list[list[float]]:
-        return client.embed(texts, config.embedding_model)
+        return embed_client.embed(texts, config.embedding_model)
 
     started = False
 

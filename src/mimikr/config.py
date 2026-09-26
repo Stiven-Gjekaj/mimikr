@@ -22,6 +22,9 @@ class Config:
     temperature: float = 0.8
     # The model that `mimikr eval` uses to compare the meaning of two replies.
     embedding_model: str = "nomic-embed-text"
+    # The server of the embedding model. Empty means the server in base_url.
+    # llama.cpp serves one model on each server, so it needs a second address.
+    embedding_url: str = ""
     identities_dir: Path = Path("identities")
     data_dir: Path = Path("data")
 
@@ -44,3 +47,7 @@ def load_config(path: Path = Path("mimikr.toml"), environ: dict[str, str] | None
         value = values[item.name]
         setattr(config, item.name, type(default)(value) if not isinstance(default, Path) else Path(value))
     return config
+
+
+def embedding_base_url(config: Config) -> str:
+    return config.embedding_url or config.base_url

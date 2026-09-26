@@ -82,3 +82,9 @@ def test_an_error_before_the_first_case_has_no_blank_line(tmp_path, capsys):
     config = make_config(tmp_path)
     assert evaluate(config, "june", None, None, False, False, client=FakeClient()) == 1
     assert capsys.readouterr().err.startswith("mimikr: the identity 'june' has no chat.md")
+
+
+def test_eval_can_embed_with_a_second_client(tmp_path, capsys):
+    chat, embedder = FakeClient(), FakeClient()
+    evaluate(make_config(tmp_path), "sam", None, None, True, False, client=chat, embed_client=embedder)
+    assert chat.embedding_models == [] and embedder.embedding_models == ["embedder"]
