@@ -1,6 +1,6 @@
 import pytest
 
-from mimikr.transcript import TranscriptError, parse_transcript, speakers
+from mimikr.transcript import TranscriptError, parse_transcript, speakers, turn_starts
 
 
 def test_reads_one_message_on_each_line():
@@ -49,3 +49,8 @@ def test_refuses_a_continuation_line_at_the_start():
 
 def test_speakers_keeps_the_order_of_the_first_message():
     assert speakers(parse_transcript("Bo: a\nAna: b\nBo: c")) == ["Bo", "Ana"]
+
+
+def test_a_turn_is_a_run_of_messages_from_the_speaker():
+    messages = parse_transcript("Ana: a\nAna: b\nBo: c\nAna: d")
+    assert turn_starts(messages, "Ana") == [0, 3]

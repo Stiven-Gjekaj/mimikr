@@ -9,7 +9,6 @@ from mimikr.evaluate import (
     score_meaning,
     score_style,
     split_cases,
-    turn_starts,
 )
 from mimikr.transcript import Message
 
@@ -17,11 +16,6 @@ from mimikr.transcript import Message
 def chat(*lines: str) -> list[Message]:
     """Build messages from 'Speaker: text' strings."""
     return [Message(*line.split(": ", 1)) for line in lines]
-
-
-def test_a_turn_is_a_run_of_messages_from_the_speaker():
-    messages = chat("Ana: a", "Ana: b", "Bo: c", "Ana: d")
-    assert turn_starts(messages, "Ana") == [0, 3]
 
 
 def test_the_test_cases_are_the_last_turns_and_the_training_ends_before_them():

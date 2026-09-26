@@ -17,7 +17,7 @@ from mimikr.identity import Identity
 from mimikr.prompt import build_messages, split_reply
 from mimikr.rooms import Room, RoomMessage
 from mimikr.style import StyleProfile, build_profile
-from mimikr.transcript import Message
+from mimikr.transcript import Message, turn_starts
 
 # The maximum number of messages before a test turn that the model sees.
 CONTEXT_SIZE = 20
@@ -31,15 +31,6 @@ class EvaluationError(ValueError):
 class Case:
     context: list[Message]
     reply: list[Message]
-
-
-def turn_starts(messages: list[Message], speaker: str) -> list[int]:
-    """Return the index of the first message of each turn of the speaker."""
-    return [
-        index
-        for index, message in enumerate(messages)
-        if message.speaker == speaker and (index == 0 or messages[index - 1].speaker != speaker)
-    ]
 
 
 def split_cases(

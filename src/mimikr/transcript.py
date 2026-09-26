@@ -56,3 +56,12 @@ def parse_transcript(source: str) -> list[Message]:
 def speakers(messages: list[Message]) -> list[str]:
     """Return each speaker one time, in the order of the first message."""
     return list(dict.fromkeys(message.speaker for message in messages))
+
+
+def turn_starts(messages: list[Message], speaker: str) -> list[int]:
+    """Return the index of the first message of each turn of the speaker."""
+    return [
+        index
+        for index, message in enumerate(messages)
+        if message.speaker == speaker and (index == 0 or messages[index - 1].speaker != speaker)
+    ]
