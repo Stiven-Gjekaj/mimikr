@@ -69,3 +69,25 @@ def test_embed_refuses_a_wrong_number_of_embeddings():
         lambda request: httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0]}]})))
     with pytest.raises(LLMError, match="1 embeddings for 2 texts"):
         client.embed(["a", "b"], model="e")
+
+
+def test_continue_text_sends_the_prompt_and_the_stop_sequences():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"text": " lol ok"}]})
+
+    client = ChatClient("http://model.test/v1", "k", transport=httpx.MockTransport(handler))
+    assert client.continue_text("June: hi\nSam:", model="base", temperature=0.9, stop=["\nJune:"]) == " lol ok"
+    assert seen["url"] == "http://model.test/v1/completions"
+    assert seen["body"] == {"model": "base", "prompt": "June: hi\nSam:", "temperature": 0.9,
+                            "stop": ["\nJune:"], "max_tokens": 200}
+
+
+def test_continue_text_reports_an_error_status():
+    client = ChatClient("http://model.test/v1", "k", transport=httpx.MockTransport(
+        lambda request: httpx.Response(500, text="boom")))
+    with pytest.raises(LLMError, match="500: boom"):
+        client.continue_text("x", model="m", temperature=0.5, stop=[])

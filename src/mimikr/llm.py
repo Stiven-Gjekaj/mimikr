@@ -35,6 +35,22 @@ class ChatClient:
         except (ValueError, KeyError, IndexError) as error:
             raise LLMError(f"the model server returned an unknown answer: {response.text[:300]}") from error
 
+    def continue_text(self, prompt: str, model: str, temperature: float, stop: list[str],
+                      max_tokens: int = 200) -> str:
+        """Continue a text with the completions API. A base model uses this API."""
+        payload = {"model": model, "prompt": prompt, "temperature": temperature,
+                   "stop": stop, "max_tokens": max_tokens}
+        try:
+            response = self._client.post("completions", json=payload)
+        except httpx.HTTPError as error:
+            raise LLMError(f"cannot reach the model server at {self._client.base_url}: {error}") from error
+        if response.status_code != 200:
+            raise LLMError(f"the model server returned {response.status_code}: {response.text[:300]}")
+        try:
+            return response.json()["choices"][0]["text"] or ""
+        except (ValueError, KeyError, IndexError) as error:
+            raise LLMError(f"the model server returned an unknown answer: {response.text[:300]}") from error
+
     def embed(self, texts: list[str], model: str) -> list[list[float]]:
         """Return one embedding for each text, in the same order."""
         try:
