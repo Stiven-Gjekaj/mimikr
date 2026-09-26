@@ -90,6 +90,19 @@ class ChatClient:
                    "max_tokens": max_tokens}
         return self._stream("completions", payload, lambda choice: choice.get("text"))
 
+    def list_models(self) -> list[str]:
+        """Return the names of the models that the server gives."""
+        try:
+            response = self._client.get("models", timeout=5.0)
+        except httpx.HTTPError as error:
+            raise LLMError(f"cannot reach the model server at {self._client.base_url}: {error}") from error
+        if response.status_code != 200:
+            raise LLMError(f"the model server returned {response.status_code}: {response.text[:300]}")
+        try:
+            return [str(item["id"]) for item in response.json()["data"]]
+        except (ValueError, KeyError, TypeError) as error:
+            raise LLMError(f"the model server returned an unknown answer: {response.text[:300]}") from error
+
     def embed(self, texts: list[str], model: str) -> list[list[float]]:
         """Return one embedding for each text, in the same order."""
         try:

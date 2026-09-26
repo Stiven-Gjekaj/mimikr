@@ -133,3 +133,9 @@ def test_an_unknown_stream_event_becomes_an_llm_error():
         lambda request: httpx.Response(200, content=sse("{not json"))))
     with pytest.raises(LLMError, match="unknown event"):
         list(client.stream_complete([], "m", 0.5))
+
+
+def test_list_models_reads_the_ids():
+    client = ChatClient("http://model.test/v1", "k", transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json={"data": [{"id": "a"}, {"id": "b"}]})))
+    assert client.list_models() == ["a", "b"]
