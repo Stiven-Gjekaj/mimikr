@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mimikr.config import Config, embedding_base_url, load_config
+from mimikr.config import Config, embedding_base_url, load_config, save_config
 
 
 def test_uses_the_defaults_when_nothing_is_set(tmp_path):
@@ -42,3 +42,19 @@ def test_the_look_has_defaults_and_the_file_can_change_it(tmp_path):
     path.write_text('theme = "dark"\naccent = "#ff8800"\nfont_size = 16\n', encoding="utf-8")
     config = load_config(path, environ={})
     assert (config.theme, config.accent, config.font_size) == ("dark", "#ff8800", 16)
+
+
+def test_saved_settings_load_back_the_same(tmp_path):
+    config = Config(base_url='http://host:8080/v1', model='mistral "nemo"', temperature=0.65, font_size=16,
+                    accent="#ff8800", identities_dir=tmp_path / "people", mode="continue")
+    path = tmp_path / "mimikr.toml"
+    save_config(config, path)
+    assert load_config(path, environ={}) == config
+
+
+def test_saving_writes_over_the_old_file(tmp_path):
+    path = tmp_path / "mimikr.toml"
+    path.write_text('model = "old"\n', encoding="utf-8")
+    save_config(Config(model="new"), path)
+    assert load_config(path, environ={}).model == "new"
+    assert not path.with_suffix(".tmp").exists()

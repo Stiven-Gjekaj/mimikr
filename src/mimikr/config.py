@@ -7,6 +7,7 @@ The order of priority, from high to low:
 3. The defaults in this file.
 """
 
+import json
 import os
 import tomllib
 from dataclasses import dataclass, fields
@@ -63,3 +64,23 @@ def load_config(path: Path = Path("mimikr.toml"), environ: dict[str, str] | None
 
 def embedding_base_url(config: Config) -> str:
     return config.embedding_url or config.base_url
+
+
+def save_config(config: Config, path: Path = Path("mimikr.toml")) -> None:
+    """Write each setting to the file. The settings page of the window calls this.
+
+    The file gets all the settings, so that a reader sees each value in one place.
+    An environment variable still has priority when mimikr starts.
+    """
+    lines = ["# The settings of mimikr. The settings page of the window writes this file.", ""]
+    for item in fields(Config):
+        value = getattr(config, item.name)
+        if isinstance(value, (Path, str)):
+            # A JSON string is also a valid TOML basic string.
+            text = json.dumps(str(value), ensure_ascii=False)
+        else:
+            text = repr(value)
+        lines.append(f"{item.name} = {text}")
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    temporary.replace(path)
