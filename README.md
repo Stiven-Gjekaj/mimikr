@@ -107,8 +107,12 @@ to each other.
 On a Mac with Apple silicon and macOS 13 or later, with Homebrew:
 
 ```bash
-brew install --cask --no-quarantine stiven-gjekaj/tap/mimikr
+brew install --cask stiven-gjekaj/tap/mimikr
 ```
+
+No paid certificate signs the application, so macOS asks before it opens it
+the first time: open System Settings, then Privacy & Security, and choose
+Open Anyway.
 
 Or download the zip from the
 [latest release](https://github.com/Stiven-Gjekaj/mimikr/releases/latest).
