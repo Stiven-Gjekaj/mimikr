@@ -29,8 +29,10 @@ cask "mimikr" do
   app "mimikr.app"
 
   caveats <<~EOS
-    No paid certificate signed mimikr, so macOS can refuse to open it.
-    Install it with --no-quarantine, or take the mark off after the install:
+    No paid certificate signed mimikr, so macOS asks before it opens
+    the app the first time. If macOS says that it cannot check the app, open
+    System Settings, then Privacy & Security, and choose Open Anyway. Or take
+    the mark off after the install:
 
       xattr -d com.apple.quarantine #{appdir}/mimikr.app
 
